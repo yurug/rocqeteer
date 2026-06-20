@@ -1,0 +1,33 @@
+# Build artifacts
+_build/
+*.vo
+*.vok
+*.vos
+*.glob
+*.aux
+.*.aux
+.lia.cache
+.nia.cache
+*.cmi
+*.cmo
+*.cmx
+*.cmt
+*.cmti
+*.cma
+*.cmxa
+*.o
+*.a
+*.install
+*.merlin
+.merlin
+_opam/
+
+# Editor / tilde backups
+*~
+.#*
+#*#
+
+# NOTE: generated/ is committed on purpose (reviewable, hash-headed). Do not ignore it.
+
+# External convenience symlink to a separate repo (absolute path, non-portable)
+agentic-dev-kit

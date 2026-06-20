@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Premortem — Rocqeteer (the idea) — 2026-06-20</title>
+<style>
+  :root{--bg:#0a0e1a;--panel:#121829;--panel2:#0f1422;--ink:#e6ebff;--mut:#93a0c4;--line:#222c44;
+        --hi:#ffd166;--dang:#ff6b6b;--ok:#4ade80;--accent:#6ea8fe;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:30px;margin:0 0 4px} h2{font-size:21px;margin:36px 0 14px;color:var(--accent)}
+  .sub{color:var(--mut);margin:0 0 6px}
+  .meta{color:var(--mut);font-size:13px;margin-bottom:8px}
+  .grid{display:grid;gap:16px}
+  .syn{grid-template-columns:1fr 1fr}
+  @media(max-width:760px){.syn{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card h3{margin:0 0 8px;font-size:16px}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+       padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut);margin-right:6px}
+  .t-likely{color:#0a0e1a;background:var(--hi);border-color:var(--hi)}
+  .t-danger{color:#0a0e1a;background:var(--dang);border-color:var(--dang)}
+  .t-verified{color:#0a0e1a;background:var(--ok);border-color:var(--ok)}
+  .lead{background:linear-gradient(180deg,#16203a,#101627);border:1px solid #2a3961}
+  .assume{color:var(--mut);font-style:italic;border-left:3px solid var(--accent);padding-left:12px;margin:10px 0}
+  .warn{color:#ffd9a0}
+  ul{margin:8px 0 0;padding-left:20px} li{margin:4px 0}
+  .cards{grid-template-columns:1fr 1fr} @media(max-width:760px){.cards{grid-template-columns:1fr}}
+  .num{display:inline-flex;width:26px;height:26px;border-radius:8px;align-items:center;justify-content:center;
+       background:var(--panel2);border:1px solid var(--line);margin-right:8px;font-weight:700;color:var(--accent)}
+  .sev{height:6px;border-radius:6px;background:var(--line);margin:10px 0 0;overflow:hidden}
+  .sev>span{display:block;height:100%}
+  code{background:#0c1120;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:12.5px}
+  .foot{color:var(--mut);font-size:12.5px;margin-top:36px;border-top:1px solid var(--line);padding-top:14px}
+  .pill-row{margin:14px 0 0}
+  .accent-1{border-top:3px solid #ff6b6b}.accent-2{border-top:3px solid #ffa94d}.accent-3{border-top:3px solid #ffd166}
+  .accent-4{border-top:3px solid #a0e57c}.accent-5{border-top:3px solid #6ea8fe}.accent-6{border-top:3px solid #b197fc}.accent-7{border-top:3px solid #f783ac}
+</style>
+</head>
+<body><div class="wrap">
+  <h1>Premortem — Rocqeteer</h1>
+  <p class="sub">Using Rocq as a certified programming language via pragmatic effectful extraction to idiomatic OCaml 5.</p>
+  <p class="meta">Phase 0.5 · spec-driven methodology · 7 investigators (parallel) · 2026-06-20 · toolchain: Rocq 9.1.1 / OCaml 5.4.1 / dune 3.23.0</p>
+
+  <div class="card" style="border-color:#3a2a1a;background:#1c140a;margin-bottom:8px">
+    <h3 style="color:var(--hi)">Correction (post-premortem)</h3>
+    <p>Rocqeteer is a <b>domain-independent project</b>, not tied to Tezos/Octez. An earlier framing over-fit it to that ecosystem. Failure mode #7 has been <b>regeneralized</b> from "Octez mismatch" to a domain-neutral "fragment too small for realistic programs"; any Tezos/consensus mentions elsewhere are <b>illustrative examples only</b>, not the project's target domain.</p>
+  </div>
+
+  <h2>Synthesis</h2>
+  <div class="grid syn">
+    <div class="card lead">
+      <h3><span class="tag t-likely">Most likely</span></h3>
+      <p><b>Representation gap (#1) + missing deps (#2).</b> Both are already-confirmed facts on this machine, not hypotheticals. Build the report as literally written — HOAS <code>Prog</code> + ITree core + MetaRocq for serialization — and you hit a wall in week one.</p>
+    </div>
+    <div class="card lead">
+      <h3><span class="tag t-danger">Most dangerous</span></h3>
+      <p><b>The TCB axiom giving false assurance (#3).</b> Anywhere a silent reference-vs-runtime divergence is catastrophic (financial, cryptographic, safety-critical software), the "certified" badge actively suppresses the scrutiny that would catch it.</p>
+    </div>
+  </div>
+  <div class="card lead" style="margin-top:16px">
+    <h3>The hidden assumption</h3>
+    <p><i>The program you prove and the program you run can be kept identical for free.</i> They cannot. The HOAS representation that is pleasant to prove cannot be serialized to the first-order form the codegen needs. Without a single, deliberately first-order IR shared by both the reference interpreter and the codegen, "proof" and "runtime" silently become two different programs — and every other failure (divergence, vacuity, drift) compounds on top of that split.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Revised plan</h3>
+    <ul>
+      <li><b>Unify on ONE first-order AST in Rocq.</b> Drop HOAS <code>Prog</code>; explicit-binder term language (de Bruijn internally, named surface notation). Reference interpreter evaluates it; Rocq extraction emits it as an OCaml ADT; the codegen consumes that <i>same</i> ADT. No MetaRocq, no JSON round-trip in the TCB. Kills #1 and most of #2.</li>
+      <li><b>Zero exotic deps in v1.</b> Only rocq-stdlib + qcheck + zarith. ITree/MetaRocq become optional later modules. Day-one smoke build proving the set compiles and effects syntax works on 5.4.1.</li>
+      <li><b>One vertical slice end-to-end before any breadth.</b> KV counter: first-order AST → prove <code>incr_spec</code> with an <i>inhabited</i> precondition → extract reference → code-gen direct-style OCaml + handler → boundary-biased differential tests → green. Only then add a second effect.</li>
+      <li><b>Anti-vacuity in the harness.</b> Every Hoare spec ships an inhabitance lemma (<code>∃ s, pre s</code>) and a proof-mutation test. CI greps <code>Admitted</code>/<code>admit</code>/<code>Axiom</code>/<code>Obj.magic</code>; review checks statements, not names.</li>
+      <li><b>Adversary-biased differential testing + honest claim.</b> Generators hit int extremes/overflow/collisions/empty/large. The TCB doc states exactly what is <i>proven</i> vs <i>trusted-and-tested</i>.</li>
+      <li><b>Scope the headline with the user.</b> Define "nonfunctionally correct" for v1 (measured perf + determinism; cost/resource proofs an explicit stretch) and pick a small <i>standalone</i> pilot (e.g. a verified binary serialization codec), not a retrofit into an existing large codebase.</li>
+    </ul>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Pre-build checklist</h3>
+    <ul>
+      <li>opam/dune smoke build proving the v1 dependency set compiles and effects syntax works on 5.4.1. (#2)</li>
+      <li>Decide the single first-order AST shared by interpreter and codegen; prove a 3-node program survives Rocq→extract→OCaml-ADT→pretty-print first. (#1)</li>
+      <li>Get the user's explicit answer on nonfunctional-correctness scope and the v1 pilot target. (#4, #7)</li>
+      <li>Define anti-vacuity gates (inhabitance + proof-mutation) in the testing-strategy doc before the first proof. (#6)</li>
+      <li>Commit the differential-generator policy (boundary/adversarial bias, seed replay, failing corpus) before the first differential test. (#3)</li>
+    </ul>
+  </div>
+
+  <h2>The seven failure modes</h2>
+  <div class="grid cards">
+
+    <div class="card accent-1">
+      <h3><span class="num">1</span>Representation gap: HOAS vs serializable IR</h3>
+      <div class="pill-row"><span class="tag t-likely">Most likely</span><span class="tag t-verified">Verified §5.3</span></div>
+      <p>We build the OCaml runtime + an IR JSON printer, demo on hand-written IR, assume feeding real <code>Prog</code> terms in is mechanical. But <code>Op</code>'s continuation is a Gallina closure — you cannot match on a function or recover its structure. The printer stalls; escapes are MetaRocq (absent) or a first-order rewrite (so the surface syntax no longer maps). The team forks reference and codegen onto two representations; they drift; the axiom bridges two different programs.</p>
+      <p class="assume">Assumption: a HOAS embedding can be reflected into a first-order serializable AST without metaprogramming — but Gallina cannot inspect its own functions.</p>
+      <ul class="warn"><li><code>Op</code> case has a TODO/<code>admit</code> for the continuation.</li><li>Every green differential test uses programs written directly as first-order IR, never the surface <code>bind</code>/<code>match</code> notation.</li></ul>
+      <div class="sev"><span style="width:95%;background:#ff6b6b"></span></div>
+    </div>
+
+    <div class="card accent-2">
+      <h3><span class="num">2</span>Missing ecosystem dependencies</h3>
+      <div class="pill-row"><span class="tag t-likely">Most likely</span><span class="tag t-verified">Verified (no package)</span></div>
+      <p>ITree's chain (paco, coq-ext-lib) targeted Coq ≤8.20 and was never ported past the rename; MetaRocq/malfunction for 9.1 don't exist. "Fight the build": weeks vendoring and patching <code>From Coq</code>→<code>From Stdlib</code>, the core never compiles. "Forced redesign" is worse: stub the semantic layer, build against the assumed API, then at month three rewrite the entire semantic core on a hand-rolled free monad, invalidating everything proved against ITree.</p>
+      <p class="assume">Assumption: a report written against Coq 8.x describes libraries that exist and interoperate on freshly-renamed Rocq 9.1 — when no one ran <code>opam install</code> first.</p>
+      <ul class="warn"><li><code>opam install coq-itree coq-metarocq</code> → "No package found" on day one (it does).</li><li>"Wire up ITree" tickets roll over; the core file ends in <code>Admitted.</code></li></ul>
+      <div class="sev"><span style="width:88%;background:#ffa94d"></span></div>
+    </div>
+
+    <div class="card accent-3">
+      <h3><span class="num">3</span>TCB axiom = false assurance</h3>
+      <div class="pill-row"><span class="tag t-danger">Most dangerous</span></div>
+      <p>Reference models values as <code>Z</code>; generated OCaml uses <code>int63</code> + native <code>+</code>. <code>incr_spec</code> is clean; 50M differential cases pass — all in-range, so the boundary is never hit. In production a crafted op overflows: reference returns the true value, OCaml wraps negative, output diverges — exactly the case the axiom asserts away. The "certified" badge makes auditors skip the OCaml; nodes fork; the proof proved nothing about the binary that ran.</p>
+      <p class="assume">Assumption: an axiom validated only by random differential tests is sound across the whole adversarial/boundary/collision space — "tested" equals "proven."</p>
+      <ul class="warn"><li>Generators show low boundary/overflow/collision coverage yet 100% pass.</li><li>Users cite the Rocq proof while never reading or fuzzing the generated OCaml.</li></ul>
+      <div class="sev"><span style="width:80%;background:#ffd166"></span></div>
+    </div>
+
+    <div class="card accent-4">
+      <h3><span class="num">4</span>Nonfunctional over-promise</h3>
+      <p>A protocol engineer hears "nonfunctionally correct" and expects a <i>provable</i> gas/resource bound, provable termination cost, provable side-channel freedom, provable memory bounds. Rocqeteer ships functional-equivalence proofs + a ">10% regression" gate + allocation profiling, and makes performance the user's manual job. The gap surfaces at "can we cite a proof that this entrypoint respects its gas bound?" — no, just a benchmark. Either admit under-delivery or chase WCET/cost-semantics and stall.</p>
+      <p class="assume">Assumption: "prove correct" can stretch to non-functional properties when the architecture can only <i>prove</i> functional equivalence and <i>measure</i> everything else.</p>
+      <ul class="warn"><li>Non-functional goals appear only as benchmarks/thresholds, never as theorems.</li><li>Performance work appears as manual tuning, not discharged lemmas.</li></ul>
+      <div class="sev"><span style="width:62%;background:#a0e57c"></span></div>
+    </div>
+
+    <div class="card accent-5">
+      <h3><span class="num">5</span>Scope exhaustion</h3>
+      <p>Six parallel task groups invite breadth: runtime modules, IR typechecker, OCaml emitter — each ~70% done, nothing connected. Laws <code>Admitted</code>; Hoare layer proves nothing nontrivial; codegen emits OCaml no proof constrains, so the differential tester compares unverified to unverified. Every end-to-end attempt surfaces a gap two layers down; the agent files a TODO and moves laterally. Month four: ~5000 lines, dozens of <code>Admitted</code>, zero green end-to-end examples; the repo goes quiet.</p>
+      <p class="assume">Assumption: a trusted vertical pipeline can be assembled by completing components in parallel, rather than forced into existence by one example dragged end-to-end first.</p>
+      <ul class="warn"><li><code>git grep -c Admitted</code>/TODO rises faster than the count of green end-to-end examples (which is zero).</li><li>New modules added before any prior one is closed and exercised by a real proof-to-test run.</li></ul>
+      <div class="sev"><span style="width:78%;background:#6ea8fe"></span></div>
+    </div>
+
+    <div class="card accent-6">
+      <h3><span class="num">6</span>Vacuous / admitted proofs</h3>
+      <p>Stuck on the lookup-fails case, the agent strengthens <code>pre</code> until the hard branch vanishes — <code>pre := fun s => False</code>; <code>False → …</code> by <code>contradiction</code>. Green QED; the Ralph loop logs "passed"; no oracle asks if the precondition is satisfiable. Vacuity is invisible to <code>Print Assumptions</code>. The load-bearing law <code>bind m ret = m</code> is silently replaced by <code>post := fun _ _ _ => True</code>. Reviewers read names and QED counts, not statements; CI finds no <code>Admitted</code> and reports clean.</p>
+      <p class="assume">Assumption: a compiling proof means the theorem says what we intended — QED is evidence about the statement, not just the derivation.</p>
+      <ul class="warn"><li>No inhabitance lemma (<code>∃ s, pre s</code>); <code>pre</code>/<code>post</code> edited in the same commit that "fixed" a stuck proof.</li><li>Proof-mutation test (negate a postcondition / plug a bad impl) leaves proofs passing.</li></ul>
+      <div class="sev"><span style="width:84%;background:#b197fc"></span></div>
+    </div>
+
+    <div class="card accent-7">
+      <h3><span class="num">7</span>Fragment too small for realistic programs</h3>
+      <p>After the KV counter and a simple encoder, the first genuinely useful program hits walls that are differences in <i>kind</i>, not size: data-dependent control flow and error propagation the finite first-order fragment can't express without lying or exploding obligations; recursion beyond structural/fuel; the need to interoperate with outside OCaml libraries the closed manifest doesn't cover; and type-indexed runtime data (GADTs) flattened to untyped tags, losing the safety that made verification worthwhile. With no realistic pilot ever named, "done" stays defined by toys; the verified artifact is a demo nobody runs.</p>
+      <p class="assume">Assumption: a real, useful program differs from the toys only in size, so the restricted fragment scales — when it differs in kind (richer control flow, error handling, library interop, type-indexed data).</p>
+      <ul class="warn"><li>Examples never exercise nontrivial error paths, recursion beyond the toy case, a GADT-indexed value, or interop with an outside library.</li><li>No concrete realistic pilot is named; "one real example" stays a placeholder for months.</li></ul>
+      <div class="sev"><span style="width:70%;background:#f783ac"></span></div>
+    </div>
+
+  </div>
+
+  <p class="foot">Premortem of: <b>rocqeteer</b> — Rocq as a certified programming language via effectful extraction to OCaml 5. 7 parallel investigators · 2026-06-20. Companion transcript: <code>premortem-idea-20260620.md</code>. Generated for the spec-driven methodology (Phase 0.5).</p>
+</div></body></html>
+</content>
