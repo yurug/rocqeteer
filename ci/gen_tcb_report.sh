@@ -53,6 +53,8 @@ echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
 echo "| Error (Throw) | effect | Rkv.Err | diff_err |"
 echo "| Runtime_Error_refines | assumption (tcb-assumption) | abort outcome+state | diff_err (3000) |"
+echo "| Env (Ask) | effect | Rkv.Env | diff_env |"
+echo "| Runtime_Env_refines | assumption (tcb-assumption) | read-only ctx flows | diff_env (3000) |"
 echo
 echo "## Public effectful entrypoints"
 echo "- \`Generated.Prog0_generated.prog0\` under \`Rkv.Kv.run\`/\`run_checked\` (unhandled -> typed error, T8)."

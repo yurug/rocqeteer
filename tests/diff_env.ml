@@ -1,0 +1,66 @@
+(** Env-effect differential test: the read-only context flows identically through the
+    reference interpreter (the [ctx] parameter of [run]) and the fast side (the [Env.run]
+    handler wrapped around the KV handler). For [sample_env] (ask; put 1 := asked value),
+    key 1 must end up holding the context on both sides, over random ctx + initial state. *)
+
+module E = Ref_extracted.EffIR
+module D = Ref_extracted.Datatypes
+module S = Ref_extracted.Samples
+module Gen = Generated.Prog0_generated
+
+let z_of = Coqconv.z_of_coqz
+
+let ref_state (ctx : Z.t) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+  let m0 =
+    List.fold_left
+      (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
+      E.M.empty pairs
+  in
+  let s' =
+    match E.run D.Coq_nil (E.DInt (Coqconv.coqz_of_z ctx)) S.sample_env m0 with
+    | D.Coq_pair (_, s) -> s
+  in
+  Coqconv.list_of_coq (E.M.elements s')
+  |> List.map (fun p ->
+         match p with
+         | D.Coq_pair (k, E.DInt v) -> (z_of k, z_of v)
+         | D.Coq_pair (_, _) -> failwith "reference: non-int KV value")
+  |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
+
+let fast_state (ctx : Z.t) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+  let table = Rkv.Kv.T.create 64 in
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k v) pairs;
+  (* Env handler outermost (Ask propagates out of the KV handler to it), KV handler inner. *)
+  Rkv.Env.run ctx (fun () -> Rkv.Kv.run table (fun () -> ignore (Gen.sample_env ())));
+  Rkv.Kv.observe table
+
+let state_eq a b =
+  List.length a = List.length b
+  && List.for_all2 (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Z.equal v1 v2) a b
+
+let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621
+let rng = Random.State.make [| seed |]
+let gen_z () = Z.of_int (Random.State.int rng 2000 - 1000)
+let gen_state () = List.init (Random.State.int rng 8) (fun _ -> (Z.of_int (Random.State.int rng 12 - 2), gen_z ()))
+
+let show l = "[" ^ String.concat "; " (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Z.to_string v)) l) ^ "]"
+
+let () =
+  let n = 3000 in
+  let fails = ref 0 and ctx_landed = ref 0 in
+  for _ = 1 to n do
+    let ctx = gen_z () and pairs = gen_state () in
+    let r = ref_state ctx pairs and f = fast_state ctx pairs in
+    (* sanity: key 1 holds the context on the reference side (the asked value flowed in) *)
+    if List.exists (fun (k, v) -> Z.equal k Z.one && Z.equal v ctx) r then incr ctx_landed;
+    if not (state_eq r f) then (
+      incr fails;
+      Printf.printf "MISMATCH (RSEED=%d) ctx=%s state=%s\n  ref =%s\n  fast=%s\n" seed (Z.to_string ctx)
+        (show pairs) (show r) (show f))
+  done;
+  Printf.printf "states=%d fails=%d | ctx-landed-at-key1=%d/%d\n" n !fails !ctx_landed n;
+  if !fails = 0 && !ctx_landed = n then
+    print_endline "ENV DIFFERENTIAL OK: read-only context flows identically; ask value lands at key 1"
+  else (
+    if !ctx_landed <> n then print_endline "ENV: context did not always reach key 1";
+    exit 1)

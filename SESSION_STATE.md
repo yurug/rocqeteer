@@ -34,17 +34,20 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 6. **Vertical slice first**: KV green end-to-end before any breadth. (adr-0006)
 
 ## Breadth iterations
-- ✅ **Iteration 1 — `Error` effect (`OThrow`).** `run` now returns `outcome * state` with `Bind`
-  short-circuit; `theories/Error.v` proves the `throw e;;k = throw e` law + concrete abort + mutant
-  (axiom-free); `runtime/err.ml` exception backend; `tests/diff_err.ml` (outcome+state, both paths). KV
-  slice unaffected (`incr_correct` survived the `outcome` change). `make all` green.
+- ✅ **Iteration 1 — `Error` effect (`OThrow`).** `run` returns `outcome * state` with `Bind` short-circuit;
+  `theories/Error.v` (law + abort + mutant, axiom-free); `runtime/err.ml`; `tests/diff_err.ml`.
+- ✅ **Iteration 2 — `Env` effect (`OAsk`).** `run` gains a read-only `ctx` parameter; `theories/Env.v`
+  (`ask_reads_ctx`, `ask_ask` idempotence, `sample_env_lands`, ignore-ctx mutant — axiom-free);
+  `runtime/env.ml` deep handler; `tests/diff_env.ml` (3000 states, ctx flows identically). Effects compose
+  three-deep (Env ∘ Error ∘ KV). KV/Error proofs survived the `ctx` ripple. `make all` green.
 
 ## Exact next step
-Continue breadth in risk order:
-1. **`Env`** (read-only context: `OAsk`/`local`) — smallest remaining effect; then **`Trace`** (append-only
-   event log) and **`Cache`** (memo, observationally invisible).
+1. **`Trace`** (append-only event log). NOTE: Trace adds an *output*, so `run`'s return type changes —
+   this is the point to **refactor `run` to thread a bundled `world` record** ({ kv; ctx; trace }) instead of
+   re-rippling its signature each effect. Then **`Cache`** (memo, observationally invisible).
 2. Recursion in EffIR (structural/fuel); GADT witnesses; the `data-encoding`-style codec pilot.
-3. Tooling: auto-generate the `Extract`/codegen/test program lists (now hand-maintained in 3 places).
+3. Tooling: auto-generate the `Extract`/codegen/test program lists (now hand-maintained in 3 places — adding
+   the world refactor is a good moment to also script these).
 Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 
 ## Open / deferred

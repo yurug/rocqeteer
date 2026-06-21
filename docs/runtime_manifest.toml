@@ -45,6 +45,22 @@ validated_by = ["diff_err (3000 states; both throw/return paths)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[effect."Env"]
+ocaml_module = "Rkv.Env"
+ops          = ["Ask"]
+backend      = "Effect.Deep handler resuming with the read-only context value"
+ctx_type     = "Z (zarith)"
+tests        = ["diff_env"]
+owner        = "yann"
+
+[assumption."Runtime_Env_refines"]
+statement    = "observe(Env.run ctx (Kv.run (fast p))) = observe(reference p with run ctx)"
+reference    = "EffIR.run's ctx parameter; OAsk -> ORet ctx (ask_reads_ctx, ask_ask, sample_env_lands)"
+fast         = "Env.run installs ctx; Ask resumes with it"
+validated_by = ["diff_env (3000 states; context lands at key 1)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 # The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.

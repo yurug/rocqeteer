@@ -43,7 +43,7 @@ Record Spec : Type := {
 
 Definition verifies (t : tm) (sp : Spec) : Prop :=
   forall s, pre sp s ->
-    let '(x, s') := run [] t s in post sp s x s'.
+    let '(x, s') := run [] DUnit t s in post sp s x s'.  (* KV programs don't OAsk; ctx fixed *)
 
 (** The current integer counter at [k] (0 if absent or non-integer). *)
 Definition cur (k : Z) (s : state) : Z :=

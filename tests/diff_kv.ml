@@ -25,7 +25,7 @@ let ref_observe (term : E.tm) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
       (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
-  let s' = match E.run D.Coq_nil term m0 with D.Coq_pair (_, s) -> s in
+  let s' = match E.run D.Coq_nil E.DUnit term m0 with D.Coq_pair (_, s) -> s in
   Coqconv.list_of_coq (E.M.elements s')
   |> List.map (fun p ->
          match p with

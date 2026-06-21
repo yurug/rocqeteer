@@ -48,6 +48,7 @@ let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   | OPut, [ k; v ] -> Printf.sprintf "(Kv.put %s %s)" k v
   | ODelete, [ k ] -> Printf.sprintf "(Kv.delete %s)" k
   | OThrow, [ e ] -> Printf.sprintf "(Err.throw %s)" e
+  | OAsk, [] -> "(Env.ask ())"
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
 
 let rec emit_tm (env : string list) (t : tm) : string =
@@ -81,7 +82,8 @@ let programs : (string * tm) list =
     ("sample_neg", Ref_extracted.Samples.sample_neg);
     ("sample_nested", Ref_extracted.Samples.sample_nested);
     ("sample_throw", Ref_extracted.Samples.sample_throw);
-    ("sample_guard5", Ref_extracted.Samples.sample_guard5) ]
+    ("sample_guard5", Ref_extracted.Samples.sample_guard5);
+    ("sample_env", Ref_extracted.Samples.sample_env) ]
 
 (* Emit all programs to stdout (captured by the dune rule into generated/). *)
 let () =

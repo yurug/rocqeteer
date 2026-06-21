@@ -51,3 +51,9 @@ Definition sample_guard5 : tm :=
        (MatchOpt (VVar 0)
           (Perform OThrow [VInt 7])
           (Perform OPut [VInt 5; VSucc (VVar 0)])).
+
+(** ENV + KV composed: read the read-only context, then store it at key 1 — exercises
+    [OAsk] and that the asked value flows into a Put. *)
+Definition sample_env : tm :=
+  Bind (Perform OAsk [])
+       (Perform OPut [VInt 1; VVar 0]).

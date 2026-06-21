@@ -45,9 +45,9 @@ Inductive val : Type :=
 | VZero : val
 | VSucc : val -> val.
 
-(** ** Effect operations: the KV signature plus [OThrow] from the Error effect
-    (kb/spec/effect-signatures.md). [OThrow e] aborts the computation with error value [e]. *)
-Inductive op : Type := OGet | OPut | ODelete | OThrow.
+(** ** Effect operations: KV, [OThrow] (Error), and [OAsk] (Env, reads the read-only
+    context) — kb/spec/effect-signatures.md. *)
+Inductive op : Type := OGet | OPut | ODelete | OThrow | OAsk.
 
 (** The result of running a computation: a normal value, or an error that aborted it.
     This is what lets [Bind] short-circuit on [OThrow] (the Error effect). *)
@@ -96,33 +96,35 @@ Definition handle (o : op) (args : list dval) (s : state) : dval * state :=
 
 (** ** The reference interpreter. Structurally recursive on [t], hence total. [Bind]
     short-circuits when its first computation aborts ([OErr]); [OThrow e] aborts with the
-    error value [e] and leaves the state untouched (the committed state up to the throw). *)
-Fixpoint run (env : list dval) (t : tm) (s : state) : outcome * state :=
+    error value [e] and leaves the state untouched (the committed state up to the throw).
+    [ctx] is the read-only Env context that [OAsk] reads; it is threaded unchanged. *)
+Fixpoint run (env : list dval) (ctx : dval) (t : tm) (s : state) : outcome * state :=
   match t with
   | Ret v        => (ORet (eval_val env v), s)
   | Bind t1 t2   =>
-      match run env t1 s with
-      | (ORet x, s') => run (x :: env) t2 s'
+      match run env ctx t1 s with
+      | (ORet x, s') => run (x :: env) ctx t2 s'
       | (OErr e, s') => (OErr e, s')   (* abort: the continuation does not run *)
       end
   | Perform o args =>
       match o with
       | OThrow => (OErr (eval_val env (nth 0 args VUnit)), s)
+      | OAsk   => (ORet ctx, s)
       | _      => let '(r, s') := handle o (map (eval_val env) args) s in (ORet r, s')
       end
   | MatchOpt scrut none some =>
       match eval_val env scrut with
-      | DNone   => run env none s
-      | DSome x => run (x :: env) some s
+      | DNone   => run env ctx none s
+      | DSome x => run (x :: env) ctx some s
       | _       => (ORet Dstuck, s)
       end
   end.
 
-Definition run_top (t : tm) : outcome * state := run [] t (M.empty dval).
+Definition run_top (ctx : dval) (t : tm) : outcome * state := run [] ctx t (M.empty dval).
 
 (** The order-independent observable: outcome + sorted key/value bindings. *)
-Definition observe (t : tm) : outcome * list (Z * dval) :=
-  let '(r, s) := run_top t in (r, M.elements s).
+Definition observe (ctx : dval) (t : tm) : outcome * list (Z * dval) :=
+  let '(r, s) := run_top ctx t in (r, M.elements s).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x). *)

@@ -16,7 +16,7 @@ let dval_to_z (d : E.dval) : Z.t =
 
 (* Reference observable: run the extracted interpreter and normalize the FMapAVL state. *)
 let ref_observe () : (Z.t * Z.t) list =
-  let pair = E.observe E.prog0 in
+  let pair = E.observe E.DUnit E.prog0 in
   let bindings = match pair with D.Coq_pair (_result, bs) -> bs in
   Coqconv.list_of_coq bindings
   |> List.map (fun kv ->

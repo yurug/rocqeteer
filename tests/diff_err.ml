@@ -21,7 +21,7 @@ let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
       (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
-  let oc, s' = match E.run D.Coq_nil term m0 with D.Coq_pair (o, s) -> (o, s) in
+  let oc, s' = match E.run D.Coq_nil E.DUnit term m0 with D.Coq_pair (o, s) -> (o, s) in
   let err =
     match oc with
     | E.ORet _ -> None

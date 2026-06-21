@@ -19,6 +19,11 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 - **EffIR** (`theories/EffIR.v`): extrinsic first-order `dval`/`val`/`op`/`tm` with a `Dstuck` sentinel; a
   **total** reference interpreter `run : … -> outcome * state` (`outcome = ORet | OErr`) over
   `FMapAVL(Z_as_OT)`, where `Bind` short-circuits on `OErr`; `incr_at`, `prog0`, and `theories/Samples.v`.
+- **Env effect** (breadth iteration 2): `OAsk` reads a read-only context threaded as a `ctx`
+  parameter of `run`; `theories/Env.v` proves `ask` reads the context, the idempotence law
+  `ask ;; ask = ask`, a concrete landing, and an ignore-the-context mutant (axiom-free).
+  `runtime/env.ml` is the `Effect.Deep` handler; `tests/diff_env.ml` checks the context flows
+  identically over 3000 states. Effects now compose three-deep (Env ∘ Error ∘ KV).
 - **Error effect** (breadth iteration 1): `OThrow` aborts the computation; `theories/Error.v` proves the
   algebraic law `throw e ;; k = throw e`, a concrete abort (`sample_throw_aborts`), and a no-throw mutant —
   all axiom-free. `runtime/err.ml` is the native-exception backend (`throw`/`run_error`); `tests/diff_err.ml`
@@ -56,7 +61,7 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 
 ## Deferred to breadth (post-slice, by design)
 General `Match`/`VPrim` + `typecheck_ir.ml`; generated effects/handlers modules + hash headers; manifest-driven
-prim resolution; abstract `TNamed` realization; the `Env`/`Trace`/`Cache` effects; recursion; GADT witnesses;
+prim resolution; abstract `TNamed` realization; the `Trace`/`Cache` effects; recursion; GADT witnesses;
 the codec pilot. (The `Error`/`OThrow` effect is now built — see above.)
 
 ## Agent notes

@@ -10,3 +10,4 @@ let sample_neg () = (let v0 = (Kv.get (Z.of_string "-3")) in (match v0 with None
 let sample_nested () = (let v0 = (Kv.get (Z.of_string "8")) in (let v1 = (Kv.get (Z.of_string "9")) in (match v0 with None -> (Kv.put (Z.of_string "8") (Z.succ Z.zero)) | Some v2 -> (Kv.put (Z.of_string "8") (Z.succ v2)))))
 let sample_throw () = (let v0 = (Kv.put (Z.of_string "1") (Z.succ Z.zero)) in (let v1 = (Err.throw (Z.of_string "99")) in (Kv.put (Z.of_string "2") (Z.succ (Z.succ Z.zero)))))
 let sample_guard5 () = (let v0 = (Kv.get (Z.of_string "5")) in (match v0 with None -> (Err.throw (Z.of_string "7")) | Some v1 -> (Kv.put (Z.of_string "5") (Z.succ v1))))
+let sample_env () = (let v0 = (Env.ask ()) in (Kv.put (Z.of_string "1") v0))
