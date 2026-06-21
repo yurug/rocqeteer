@@ -59,8 +59,16 @@ Verbose but transparent — the generator emits predictable constructors and the
 explicit. A typeclass-based `SubEff` injection is a possible later ergonomic layer, not v1.
 
 ## Slice-1 signature: KV
-`Get`/`Put`/`Delete` over abstract `key`/`value` (`TNamed`), realized via the manifest. Slice 1 keeps
-`key`/`value` abstract; arithmetic in `incr` uses pure prims `value_zero`/`value_succ` (registered prims, [[runtime-manifest]]).
+`Get`/`Put`/`Delete`. The KV signature stays parametric over `key`/`value`, but the **slice-1
+instantiation is concrete `key = value = Z`** (`TInt`, realized to `Zarith.Z.t`; reference map = `FMapAVL`
+over `Z_as_OT`) so `incr`'s arithmetic — pure prims `value_zero = Z.zero` / `value_succ = Z.succ`
+(registered, [[runtime-manifest]]) — is well-typed. Abstract `TNamed` key/value realization is deferred to
+the codec pilot (`plan.md` Resolution 3).
+
+### Arity convention (codegen ↔ handler)
+Effect constructors are **tupled** (`Put : key * value -> unit Effect.t`); the public `perform` wrappers are
+**curried** (`put : key -> value -> unit`). Codegen lowers `Perform (KV,Put) [k;v]` through the curried
+wrapper, so the generated `.mli`, the lowering, and the handler's `continue` types all agree.
 
 ## Agent notes
 > Resist row-polymorphic/extensible-effect cleverness in v1 (the report warns against it too). Explicit

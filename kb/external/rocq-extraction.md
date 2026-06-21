@@ -35,9 +35,15 @@ Extraction is a build-time, one-shot operation (no API rate limit). The risk is 
 (b) a CI check that the extracted EffIR `.mli` matches the hand-written `codegen/eff_ir.ml` mirror.
 
 ## How we configure it
-- An `theories/Extraction/*.v` with `Extraction Language OCaml`, `Extract Inductive`/`Extract Constant` only
-  for **manifest-registered** realizers, and `Separate Extraction` of the EffIR datatype + example terms +
-  the reference `run`.
+- A `theories/Extraction/*.v` with `Extraction Language OCaml`, `Extract Inductive`/`Extract Constant` only
+  for **manifest-registered** realizers (slice 1: `Z -> Zarith.Z.t`), and `Separate Extraction` of the EffIR
+  datatype + example terms + the reference `run`.
+- Dune wiring: `(using rocq 0.13)` with a `(rocq.extraction (prelude …) (extracted_files …) (theories …
+  Stdlib))` stanza (prelude `.v` excluded from any theory stanza; every extracted `.ml/.mli` listed). The
+  legacy `coq.*` stanzas are removed in dune 3.24.
+- **Verified shape:** extraction is `Obj.magic`-free but **renamed and multi-module** — `val -> coq_val`,
+  `Z -> coq_Z`, Peano `nat`, inductive `string`/`ascii`, across files `EffIR`/`BinNums`/`Datatypes`/…. The
+  `codegen/eff_ir.ml` mirror reflects that real shape, and the sync check is a **`.mli` diff**, not a grep.
 - `Print Assumptions <thm>` output is captured into `tcb_report.md` for every example theorem.
 
 ## Agent notes

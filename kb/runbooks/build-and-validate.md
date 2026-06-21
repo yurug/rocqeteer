@@ -20,9 +20,13 @@ Rocq 9.1.1 · OCaml 5.4.1 · dune 3.23.0 · qcheck 0.91 · zarith 1.14. Switch: 
 
 ## Day-zero gate (before any other work — [[adr-0003-dependency-budget]])
 ```
-make smoke      # dune builds a trivial Rocq file + a 3-line OCaml effects program (perform/deep handler).
-                # Proves the dependency set + effects syntax work on this machine. Block all work behind it.
+make smoke      # (using rocq 0.13) workspace: builds a trivial Rocq file, EXTRACTS it (Separate Extraction
+                # round-trip), and builds a 3-line OCaml effects program (perform/deep handler).
+                # Proves deps + effects syntax + the extraction wiring work here. Block all work behind it.
 ```
+Dune Rocq integration uses **`(using rocq 0.13)`**: `(rocq.theory …)` for libraries plus a *separate*
+`(rocq.extraction (prelude …) (extracted_files …) (theories … Stdlib))` — prelude excluded from any theory
+stanza, every extracted `.ml/.mli` listed explicitly. The legacy `coq.*` stanzas are removed in dune 3.24.
 
 ## Pipeline (each step gates the next)
 ```

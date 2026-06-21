@@ -36,7 +36,10 @@ Fixpoint run {A} (h : Handler) (env : env) (t : tm) (s : state) : value * state 
 ```
 **Totality:** `run` recurses only on structural sub-terms of `t` (slice 1 has no recursion in programs), so
 it is a plain `Fixpoint`. When program-level recursion is added, it is via compiled fuel/measure ([[effir]]
-out-of-scope list), keeping `run` structural.
+out-of-scope list), keeping `run` structural. Runtime values are a `dval` sum
+(`DUnit`/`DBool`/`DInt Z`/`DNone`/`DSome`/`DPair`/**`Dstuck`**); impossible or ill-typed cases yield `Dstuck`,
+discharged as unreachable for well-typed closed terms. `run` is therefore **total** returning `dval * state`
+(not `option`) — `verifies` below destructures a total pair (`plan.md` Resolution 2).
 
 ## KV reference handler (slice 1)
 ```coq
