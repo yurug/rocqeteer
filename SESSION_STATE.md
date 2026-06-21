@@ -14,7 +14,10 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 - ✅ **Phase 1 — Ambiguity resolution.** `kb/questions-round1.md`. Outcome: **all defaults accepted; non-functional = MEASURE, not prove.** (Project is independent of Tezos/Octez — corrected mid-session.)
 - ✅ **Phase 2 — Knowledge Base.** 34 content/index files under `kb/`. Structural audit clean (35 ids, links resolve). KB quiz (`kb/reports/kb-quiz-round1.md`) scored **10/10**, no material gaps. Committed.
 - ✅ **Phase 3 — Planning.** `kb/plan.md` drafted (3-step KV slice, risk-ordered). Plan-simulation gate passed (it compiled extraction + effects on the live toolchain); **7 resolutions** folded into the plan and the KB (`kb/reports/plan-simulation-round1.md`). **Awaiting user approval** (Phase 3 exit). Plan + KB refinements are **uncommitted** pending approval.
-- ⏭️ **Phase 4 — Implementation (NEXT, after approval).** Ralph-loop **Step 1 (bridge spike)** first. No implementation code until the plan is approved.
+- 🔄 **Phase 4 — Implementation (in progress).**
+  - ✅ **Step 1 (bridge spike)** — commit `880401a`. One extracted EffIR `prog0` drives both the reference interpreter and the generated direct-style OCaml; differential `{7→1}` green. `make smoke`/`test`/`ci-checks` pass. Codegen consumes the extracted ADT directly (no mirror to drift).
+  - ✅ **Step 2 (proven incr)** — `theories/KV.v`: `incr_correct` proven (Print Assumptions = "Closed under the global context", no axioms), state laws P7, inhabitance lemma + `incr_wrong_rejected` mutant. The `Dstuck` cases fell out of the precondition — no well-typed-view needed.
+  - ⏭️ **Step 3 (harden)** — full codegen (effects .mli, hash header, promote), `Runtime_KV_refines` axiom + tcb_report, adversarial differential test (QCheck, T2/T5/T6/T7 coverage), CI gates. Then slice DoD → breadth unlocked.
 
 ## Key decisions locked (see ADRs)
 1. One first-order **EffIR** shared by reference interpreter and codegen; no HOAS `Prog`. (adr-0001)
