@@ -1,0 +1,11 @@
+; prog0_generated.ml is produced by rocq-eff-codegen from the extracted EffIR value.
+; Slice 1 keeps it as a build artifact; Step 3 promotes + hash-heads it (kb/spec/codegen.md).
+(rule
+ (target prog0_generated.ml)
+ (action
+  (with-stdout-to prog0_generated.ml (run %{exe:../codegen/codegen.exe}))))
+
+(library
+ (name generated)
+ (libraries rkv zarith)
+ (flags (:standard -w -a)))

@@ -1,0 +1,26 @@
+; Extract the EffIR datatype + the slice-1 program + the reference interpreter to a
+; faithful OCaml ADT (kb/architecture/decisions/adr-0002-extraction-bridge.md). The
+; prelude Extr.v drives `Separate Extraction`; every produced file is listed explicitly
+; (kb/plan.md Resolution 1). The output is wrapped into the `ref_extracted` library so
+; both the codegen and the reference executable can link against the SAME extracted
+; values (kb/architecture/decisions/adr-0006-vertical-slice.md).
+
+(rocq.extraction
+ (prelude Extr)
+ (extracted_files
+  BinInt.ml BinInt.mli BinNums.ml BinNums.mli BinPos.ml BinPos.mli
+  Datatypes.ml Datatypes.mli EffIR.ml EffIR.mli FMapAVL.ml FMapAVL.mli
+  FMapList.ml FMapList.mli Int.ml Int.mli ListDef.ml ListDef.mli
+  List.ml List.mli Nat.ml Nat.mli OrderedTypeEx.ml OrderedTypeEx.mli
+  OrderedType.ml OrderedType.mli Orders.ml Orders.mli OrdersTac.ml OrdersTac.mli
+  PosDef.ml PosDef.mli Specif.ml Specif.mli)
+ (theories Rocqeteer Stdlib))
+
+; Extracted OCaml is machine-generated; silence its warnings (-w -a) but keep it a real
+; compiled library so any type breakage in the bridge is a loud compile error.
+(library
+ (name ref_extracted)
+ (modules
+  BinInt BinNums BinPos Datatypes EffIR FMapAVL FMapList Int
+  ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PosDef Specif)
+ (flags (:standard -w -a)))
