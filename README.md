@@ -99,10 +99,10 @@ the breadth roadmap.)
 
 ## Roadmap (post-slice)
 
-The `Error` effect next (same spec→prove→generate→differentially-test loop), then `Env`/`Trace`/`Cache`,
+The **`Error` effect** (`OThrow` + a native-exception backend, with the `throw e;;k = throw e` law proven
+and an outcome+state differential test) is **done** — the first breadth iteration. Next: `Env`/`Trace`/`Cache`,
 recursion, GADT witnesses, and a `data-encoding`-style verified binary codec pilot. The boundaries between
-slice-1 reality and the fuller design are recorded in
-[`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
+built reality and the fuller design are recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
 
 ## License
 

@@ -33,14 +33,19 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 5. **Anti-vacuity**: inhabitance lemma + proof-mutation test per spec. (adr-0005)
 6. **Vertical slice first**: KV green end-to-end before any breadth. (adr-0006)
 
+## Breadth iterations
+- ✅ **Iteration 1 — `Error` effect (`OThrow`).** `run` now returns `outcome * state` with `Bind`
+  short-circuit; `theories/Error.v` proves the `throw e;;k = throw e` law + concrete abort + mutant
+  (axiom-free); `runtime/err.ml` exception backend; `tests/diff_err.ml` (outcome+state, both paths). KV
+  slice unaffected (`incr_correct` survived the `outcome` change). `make all` green.
+
 ## Exact next step
-The KV slice is fully complete through Phase 7. The next iteration is **breadth** — re-run the spec-driven
-loop for the next feature, in this risk order:
-1. **`Error` effect** (`ErrorE`/`Throw` → OCaml exception backend + 3-arm `run_checked`) — same
-   spec→prove→generate→differentially-test loop; smallest new effect, exercises the error path.
-2. Then `Env`/`Trace`/`Cache`; recursion in EffIR; GADT witnesses; the `data-encoding`-style codec pilot.
-3. Tooling: auto-generate the `Extract`/codegen/test program lists (currently hand-maintained in 3 places).
-Deferred design items are tracked in `kb/spec/slice1-status.md` ("Deferred to breadth").
+Continue breadth in risk order:
+1. **`Env`** (read-only context: `OAsk`/`local`) — smallest remaining effect; then **`Trace`** (append-only
+   event log) and **`Cache`** (memo, observationally invisible).
+2. Recursion in EffIR (structural/fuel); GADT witnesses; the `data-encoding`-style codec pilot.
+3. Tooling: auto-generate the `Extract`/codegen/test program lists (now hand-maintained in 3 places).
+Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 
 ## Open / deferred
 - Exact EffIR Rocq constructor names: pinned during slice-1 implementation (intentional deferral).

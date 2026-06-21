@@ -38,7 +38,7 @@ Proof. reflexivity. Qed.
     term [t] from any [pre] state and demands [post]. *)
 Record Spec : Type := {
   pre  : state -> Prop;
-  post : state -> dval -> state -> Prop;
+  post : state -> outcome -> state -> Prop;  (* result is now an outcome (value or error) *)
 }.
 
 Definition verifies (t : tm) (sp : Spec) : Prop :=

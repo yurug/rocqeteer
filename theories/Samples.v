@@ -36,3 +36,18 @@ Definition sample_nested : tm :=
              (MatchOpt (VVar 1)
                 (Perform OPut [VInt 8; VSucc VZero])
                 (Perform OPut [VInt 8; VSucc (VVar 0)]))).
+
+(** ERROR effect: put 1 := 1; THROW 99; put 2 := 2 — the throw aborts, so the second put
+    never runs and the state keeps only the pre-throw write. *)
+Definition sample_throw : tm :=
+  Bind (Perform OPut [VInt 1; VSucc VZero])
+       (Bind (Perform OThrow [VInt 99])
+             (Perform OPut [VInt 2; VSucc (VSucc VZero)])).
+
+(** ERROR + KV composed: get 5; if absent THROW 7, else increment — one path returns
+    normally, the other aborts, so a random state exercises both. *)
+Definition sample_guard5 : tm :=
+  Bind (Perform OGet [VInt 5])
+       (MatchOpt (VVar 0)
+          (Perform OThrow [VInt 7])
+          (Perform OPut [VInt 5; VSucc (VVar 0)])).

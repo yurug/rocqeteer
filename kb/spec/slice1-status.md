@@ -17,7 +17,12 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 
 ## What is built (and verified)
 - **EffIR** (`theories/EffIR.v`): extrinsic first-order `dval`/`val`/`op`/`tm` with a `Dstuck` sentinel; a
-  **total** reference interpreter `run` over `FMapAVL(Z_as_OT)`; `incr_at`, `prog0`, and `theories/Samples.v`.
+  **total** reference interpreter `run : … -> outcome * state` (`outcome = ORet | OErr`) over
+  `FMapAVL(Z_as_OT)`, where `Bind` short-circuits on `OErr`; `incr_at`, `prog0`, and `theories/Samples.v`.
+- **Error effect** (breadth iteration 1): `OThrow` aborts the computation; `theories/Error.v` proves the
+  algebraic law `throw e ;; k = throw e`, a concrete abort (`sample_throw_aborts`), and a no-throw mutant —
+  all axiom-free. `runtime/err.ml` is the native-exception backend (`throw`/`run_error`); `tests/diff_err.ml`
+  checks outcome AND state over 3000 states (both throw/return paths).
 - **Proofs** (`theories/KV.v`, all `Qed`, `Print Assumptions incr_correct` = "Closed under the global
   context"): `incr_correct` with a **frame clause**; the three P7 state laws (`find_add_same`, `put_put`,
   `get_get`); three anti-vacuity artifacts (`incr_spec_inhabited`, `incr_wrong_rejected`, `incr_clobber_rejected`).
@@ -51,8 +56,8 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 
 ## Deferred to breadth (post-slice, by design)
 General `Match`/`VPrim` + `typecheck_ir.ml`; generated effects/handlers modules + hash headers; manifest-driven
-prim resolution; the `ErrorE` effect + 3-arm wrapper; abstract `TNamed` realization; Error/Env/Trace/Cache
-effects; recursion; GADT witnesses; the codec pilot.
+prim resolution; abstract `TNamed` realization; the `Env`/`Trace`/`Cache` effects; recursion; GADT witnesses;
+the codec pilot. (The `Error`/`OThrow` effect is now built — see above.)
 
 ## Agent notes
 > Do not "fix" the code to match the aspirational spec clauses above — they are deliberately deferred. If you

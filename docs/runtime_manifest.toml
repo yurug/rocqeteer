@@ -29,6 +29,22 @@ value_type   = "Z (zarith)"
 tests        = ["diff_test", "diff_kv"]
 owner        = "yann"
 
+[effect."Error"]
+ocaml_module = "Rkv.Err"
+ops          = ["Throw"]
+backend      = "native exception (Runtime_error of Z) behind run_error; aborts, commits prior state"
+error_type   = "Z (zarith)"
+tests        = ["diff_err"]
+owner        = "yann"
+
+[assumption."Runtime_Error_refines"]
+statement    = "observe(run_error (Kv.run (fast p))) = observe(reference(p)) on outcome AND state"
+reference    = "EffIR.run with OErr short-circuit (throw_aborts law, sample_throw_aborts)"
+fast         = "Err.throw -> Runtime_error, caught by Err.run_error"
+validated_by = ["diff_err (3000 states; both throw/return paths)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 # The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.

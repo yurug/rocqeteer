@@ -51,9 +51,12 @@ echo "| value_zero | primitive | Z.zero | diff_kv |"
 echo "| value_succ | primitive | Z.succ | diff_kv |"
 echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
+echo "| Error (Throw) | effect | Rkv.Err | diff_err |"
+echo "| Runtime_Error_refines | assumption (tcb-assumption) | abort outcome+state | diff_err (3000) |"
 echo
 echo "## Public effectful entrypoints"
 echo "- \`Generated.Prog0_generated.prog0\` under \`Rkv.Kv.run\`/\`run_checked\` (unhandled -> typed error, T8)."
+echo "- error programs (sample_throw/sample_guard5) under \`Err.run_error (Kv.run …)\` (throw -> Error e, aborts)."
 echo
 echo "## Forbidden-API gates (CI)"
 echo "- no Obj.magic; Effect.perform confined to runtime/; no Admitted/admit/Axiom; no unregistered Extract Constant; generated file unedited."
