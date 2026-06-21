@@ -19,7 +19,11 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
   - ✅ **Step 2 (proven incr)** — `theories/KV.v`: `incr_correct` proven (Print Assumptions = "Closed under the global context", no axioms), state laws P7, inhabitance lemma + `incr_wrong_rejected` mutant. The `Dstuck` cases fell out of the precondition — no well-typed-view needed.
   - ✅ **Step 3 (harden)** — adversarial differential test `tests/diff_kv.ml` (5000 cases, 0 fails, coverage T2/T4/T5 asserted, T8 fault injection); generated file promoted+committed with a freshness gate; `docs/runtime_manifest.toml` + generated `docs/tcb_report.md`; 6 CI gates (`make all` green). **Slice DoD met → breadth unlocked** (green end-to-end examples = 1).
 
-**Phase 4 (the requested Steps 1–3) is COMPLETE.** `make all` is green on Rocq 9.1.1 / OCaml 5.4.1.
+- ✅ **Phase 5 — Quality audits.** 3 independent audit agents (test-gap/provability, spec-compliance/simplicity, security/TCB). All criticals/highs fixed: `run_checked` catches all exceptions + typed errors; `runtime/kv.mli` (+coqconv/fault) hides effect constructors; `incr_spec` frame clause + clobber mutant; **multi-program differential** (Samples.v: ODelete/Ret/multi-Perform/neg-key/deep-nesting) → 6 progs × 5000 states; codegen depth-naming (no global ref); CI hardening (scan generated/, broader axiom grep, pos_of_z guard, ci-checks⊇test). Commit `b17d64e`.
+- ✅ **Phase 6 — KB sync.** `kb/spec/slice1-status.md` (authoritative built-vs-spec) + banners on divergent specs; `get_get` P7 law proven; sync-quiz 3/3. Commit `abcbff0`.
+- ✅ **Phase 7 — Docs & validation.** `README.md` (workflow = the validation); clean `make all` green from scratch.
+
+**The full methodology (Phases 0–7) is COMPLETE for the KV slice.** `make all` green on Rocq 9.1.1 / OCaml 5.4.1.
 
 ## Key decisions locked (see ADRs)
 1. One first-order **EffIR** shared by reference interpreter and codegen; no HOAS `Prog`. (adr-0001)
@@ -30,14 +34,13 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 6. **Vertical slice first**: KV green end-to-end before any breadth. (adr-0006)
 
 ## Exact next step
-Steps 1–3 are done and committed; `make all` green. Remaining methodology phases (not yet started):
-- **Phase 5 — Quality audits** (test-gap, anti-vacuity, security, perf, spec-compliance, simplicity, TCB).
-- **Phase 6 — KB sync**: reconcile the KB with what was built. Known divergences to fold in: codegen
-  consumes the extracted ADT directly (no hand-written mirror); the refinement is a *documented manifest
-  assumption*, not a Rocq `Axiom` (so Rocq stays axiom-free); slice-1 uses `MatchOpt` (option-only) as the
-  match form; slice-1 `key=value=Z` concrete; no well-typed-view was needed.
-- **Phase 7 — Docs** (README, user manual).
-- **Breadth** (post-slice): Error/Env/Trace/Cache effects, recursion, GADT witnesses, codec pilot.
+The KV slice is fully complete through Phase 7. The next iteration is **breadth** — re-run the spec-driven
+loop for the next feature, in this risk order:
+1. **`Error` effect** (`ErrorE`/`Throw` → OCaml exception backend + 3-arm `run_checked`) — same
+   spec→prove→generate→differentially-test loop; smallest new effect, exercises the error path.
+2. Then `Env`/`Trace`/`Cache`; recursion in EffIR; GADT witnesses; the `data-encoding`-style codec pilot.
+3. Tooling: auto-generate the `Extract`/codegen/test program lists (currently hand-maintained in 3 places).
+Deferred design items are tracked in `kb/spec/slice1-status.md` ("Deferred to breadth").
 
 ## Open / deferred
 - Exact EffIR Rocq constructor names: pinned during slice-1 implementation (intentional deferral).
