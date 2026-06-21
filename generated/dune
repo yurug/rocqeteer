@@ -1,7 +1,10 @@
-; prog0_generated.ml is produced by rocq-eff-codegen from the extracted EffIR value.
-; Slice 1 keeps it as a build artifact; Step 3 promotes + hash-heads it (kb/spec/codegen.md).
+; prog0_generated.ml is produced by rocq-eff-codegen from the extracted EffIR value and
+; PROMOTED into the source tree so it is committed and reviewable (kb/spec/codegen.md).
+; ci/check_generated_fresh.sh re-runs codegen and fails if the committed file differs
+; (the "no manual edit / regenerate-and-commit" gate).
 (rule
  (target prog0_generated.ml)
+ (mode promote)
  (action
   (with-stdout-to prog0_generated.ml (run %{exe:../codegen/codegen.exe}))))
 

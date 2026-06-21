@@ -1,0 +1,42 @@
+# Runtime manifest (slice 1) — every realizer and refinement assumption that crosses
+# from the proven Rocq world into the trusted OCaml runtime. This is the audit surface
+# of the runtime TCB (kb/spec/runtime-manifest.md, kb/architecture/decisions/adr-0004-trust-model.md).
+
+[primitive."value_zero"]
+ocaml_symbol = "Z.zero"
+purity       = "pure"
+raises       = []
+pre          = "true"
+post         = "result = 0 (reference DInt 0)"
+tests        = ["diff_kv"]
+owner        = "yann"
+
+[primitive."value_succ"]
+ocaml_symbol = "Z.succ"
+purity       = "pure"
+raises       = []
+pre          = "true"
+post         = "result = Z.succ x (reference: DInt (Z.succ z))"
+tests        = ["diff_kv"]
+owner        = "yann"
+
+[effect."KV"]
+ocaml_module = "Rkv.Kv"
+ops          = ["Get", "Put", "Delete"]
+backend      = "Hashtbl(Z) + Effect.Deep handler, one-shot continue"
+key_type     = "Z (zarith)"
+value_type   = "Z (zarith)"
+tests        = ["diff_test", "diff_kv"]
+owner        = "yann"
+
+# The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
+# development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
+# context"). It is validated by the adversarial differential tests below.
+[assumption."Runtime_KV_refines"]
+statement    = "for all initial states, observe(fast(prog0)) = observe(reference(prog0))"
+reference    = "EffIR.run [] prog0 (the pure FMapAVL interpreter)"
+fast         = "Generated.Prog0_generated.prog0 under Rkv.Kv.run"
+observable   = "sorted (key,value) bindings, coq_Z<->zarith bridged"
+validated_by = ["diff_test", "diff_kv (5000 adversarial cases, T2/T4/T5/T7 covered)"]
+review_label = "tcb-assumption"
+owner        = "yann"

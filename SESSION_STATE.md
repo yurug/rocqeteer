@@ -17,7 +17,9 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 - 🔄 **Phase 4 — Implementation (in progress).**
   - ✅ **Step 1 (bridge spike)** — commit `880401a`. One extracted EffIR `prog0` drives both the reference interpreter and the generated direct-style OCaml; differential `{7→1}` green. `make smoke`/`test`/`ci-checks` pass. Codegen consumes the extracted ADT directly (no mirror to drift).
   - ✅ **Step 2 (proven incr)** — `theories/KV.v`: `incr_correct` proven (Print Assumptions = "Closed under the global context", no axioms), state laws P7, inhabitance lemma + `incr_wrong_rejected` mutant. The `Dstuck` cases fell out of the precondition — no well-typed-view needed.
-  - ⏭️ **Step 3 (harden)** — full codegen (effects .mli, hash header, promote), `Runtime_KV_refines` axiom + tcb_report, adversarial differential test (QCheck, T2/T5/T6/T7 coverage), CI gates. Then slice DoD → breadth unlocked.
+  - ✅ **Step 3 (harden)** — adversarial differential test `tests/diff_kv.ml` (5000 cases, 0 fails, coverage T2/T4/T5 asserted, T8 fault injection); generated file promoted+committed with a freshness gate; `docs/runtime_manifest.toml` + generated `docs/tcb_report.md`; 6 CI gates (`make all` green). **Slice DoD met → breadth unlocked** (green end-to-end examples = 1).
+
+**Phase 4 (the requested Steps 1–3) is COMPLETE.** `make all` is green on Rocq 9.1.1 / OCaml 5.4.1.
 
 ## Key decisions locked (see ADRs)
 1. One first-order **EffIR** shared by reference interpreter and codegen; no HOAS `Prog`. (adr-0001)
@@ -28,10 +30,14 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
 6. **Vertical slice first**: KV green end-to-end before any breadth. (adr-0006)
 
 ## Exact next step
-Plan is drafted and gated; **awaiting user approval**. On approval: commit the approved plan + KB
-refinements, then begin Phase 4 **Step 1 (bridge spike)** — `(using rocq 0.13)` dune workspace + `make smoke`
-(incl. extraction round-trip), extrinsic EffIR inductives + total `run` (with `Dstuck`), extract `prog0`+`run`,
-codegen mirror + `FMapAVL`↔`Hashtbl` normalizer, and show reference == fast on `prog0`.
+Steps 1–3 are done and committed; `make all` green. Remaining methodology phases (not yet started):
+- **Phase 5 — Quality audits** (test-gap, anti-vacuity, security, perf, spec-compliance, simplicity, TCB).
+- **Phase 6 — KB sync**: reconcile the KB with what was built. Known divergences to fold in: codegen
+  consumes the extracted ADT directly (no hand-written mirror); the refinement is a *documented manifest
+  assumption*, not a Rocq `Axiom` (so Rocq stays axiom-free); slice-1 uses `MatchOpt` (option-only) as the
+  match form; slice-1 `key=value=Z` concrete; no well-typed-view was needed.
+- **Phase 7 — Docs** (README, user manual).
+- **Breadth** (post-slice): Error/Env/Trace/Cache effects, recursion, GADT witnesses, codec pilot.
 
 ## Open / deferred
 - Exact EffIR Rocq constructor names: pinned during slice-1 implementation (intentional deferral).

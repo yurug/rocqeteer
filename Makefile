@@ -1,9 +1,9 @@
 # Rocqeteer pipeline (kb/runbooks/build-and-validate.md).
 # Targets mirror the runbook; each gates the next.
 
-.PHONY: all smoke rocq gen-fast build-fast test ci-checks clean
+.PHONY: all smoke rocq gen-fast build-fast test tcb-report ci-checks clean
 
-all: smoke rocq gen-fast build-fast test ci-checks ## full pipeline
+all: smoke rocq gen-fast build-fast test tcb-report ci-checks ## full pipeline
 
 smoke: ## day-zero gate: rocq theory builds, extraction round-trip, effects runtime compiles
 	dune build theories/ extraction/ runtime/
@@ -21,10 +21,16 @@ build-fast: ## compile generated direct-style OCaml + runtime + codegen
 test: ## differential tests (reference vs fast)
 	dune test
 
+tcb-report: ## regenerate docs/tcb_report.md from live build facts
+	./ci/gen_tcb_report.sh
+
 ci-checks: build-fast ## TCB / forbidden-API gates
 	./ci/check_no_objmagic.sh
 	./ci/check_no_bind_in_generated.sh
 	./ci/check_no_stray_perform.sh
+	./ci/check_no_admitted.sh
+	./ci/check_generated_fresh.sh
+	./ci/check_tcb.sh
 
 clean: ## remove build artifacts
 	dune clean
