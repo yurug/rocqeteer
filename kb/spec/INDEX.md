@@ -20,6 +20,7 @@ The contracts that implementation must satisfy. Read top-to-bottom for a first p
 | `codegen.md` | The EffIR→OCaml lowering table, emitted files, headers, determinism, fail-loud rules | building or debugging `rocq-eff-codegen` |
 | `runtime-manifest.md` | The realizer + axiom registry schema and validity rules | adding a realizer or a refinement axiom (expanding the TCB) |
 | `error-taxonomy.md` | Codegen-time, runtime, and CI/TCB error classes | handling failures or wiring CI gates |
+| `slice1-status.md` | **What slice 1 actually built vs. these specs** (divergences govern for slice 1) | reading any spec above — check this first |
 
 ## Reading order for the KV slice (slice 1)
 `effir.md` → `effect-signatures.md` (KV) → `reference-semantics.md` (handle_kv, incr_spec) →

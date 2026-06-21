@@ -61,6 +61,10 @@ the fast bytes implementation ([[prop-edge-cases]]).
 ## Agent notes
 > P5 is the load-bearing *tested* property; treat its generator quality as a first-class deliverable, not an
 > afterthought. P3/P4/P6 are cheap CI gates that catch the most dangerous regressions — wire them early.
+> **Slice-1 status:** P1-spirit/P3/P4 hold; P5 is exercised over **6 programs × 5000 adversarial states**
+> (30000 comparisons); P6 has three artifacts (inhabitance + value mutant + frame/clobber mutant); P7's
+> three state laws (`find_add_same`, `put_put`, `get_get`) are all proven; `incr_correct` carries a frame
+> clause. See [[slice1-status]].
 
 ## Related files
 - `properties/non-functional.md` — the measured (not proven) criteria.

@@ -35,9 +35,13 @@ cache-corruption simulation — and assert the typed-error or agreement behavior
 > T1, T6, T7 are the ones most likely to pass uniform random testing and fail in production — weight
 > generators toward them explicitly. A green differential suite that never exercised T1/T6/T7 is a warning
 > sign, not a success (it is literally the premortem #3 early-warning signal).
-> **Slice 1:** T1 is **N/A** (no `int63` realizer yet; the default `Z` cannot overflow). The differential
-> suite must **log coverage counts > 0** for T2/T5/T6/T7 — coverage is asserted, not assumed
-> (`plan.md` Resolution 6).
+> **Slice 1 (what `tests/diff_kv.ml` actually asserts):** **T1 N/A** (no `int63` realizer; `Z` cannot
+> overflow). **Asserted by logged coverage count > 0:** T2 (key absent), T4 (large state), T5 (duplicate
+> puts). **Structural (guaranteed, not counted):** T7 — the observable is a *sorted* assoc list, so
+> iteration order cannot affect the result. **T8** is checked by fault injection (unhandled effect + stray
+> exception → typed error). **T6** (internal `Hashtbl` collisions) occurs naturally under the small key
+> range but is **not separately counted** in slice 1. This is the authoritative asserted set; see
+> [[slice1-status]].
 
 ## Related files
 - `conventions/testing-strategy.md` — generator bias, seed replay, corpus mechanics.

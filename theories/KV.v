@@ -27,6 +27,12 @@ Proof.
   - rewrite !add_neq_o by assumption; reflexivity.
 Qed.
 
+(** Get-then-get is idempotent: a read does not mutate the store, so a second read sees the
+    same value and state (the state law "get k ;; get k = get k", P7's third law). *)
+Lemma get_get : forall k (s : state),
+  handle OGet [DInt k] (snd (handle OGet [DInt k] s)) = handle OGet [DInt k] s.
+Proof. reflexivity. Qed.
+
 (** ** Hoare layer. A [Spec] is a precondition on the state and a postcondition relating
     the initial state, the result value, and the final state; [verifies] runs the closed
     term [t] from any [pre] state and demands [post]. *)

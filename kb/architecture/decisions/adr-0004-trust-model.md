@@ -10,6 +10,11 @@ related: [reference-semantics, runtime-manifest, conv-testing-strategy, prop-non
 ---
 # ADR-0004 — Trust model: prove functional, measure non-functional, name every axiom
 
+> **Slice-1 realization:** the refinement "axiom" is a documented **manifest assumption**
+> (`docs/runtime_manifest.toml` `Runtime_KV_refines`), not a Rocq `Axiom` — so the Rocq development stays
+> axiom-free (`Print Assumptions incr_correct` = "Closed under the global context"). It is validated by the
+> differential tests, not declared in the logic. See [[slice1-status]].
+
 ## Context
 The correctness guarantee bridges a *proven* Rocq reference and a *trusted* OCaml runtime via a refinement
 **axiom** checked only by differential tests. The premortem's *most-dangerous* failure (#3): a runtime

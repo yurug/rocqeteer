@@ -41,7 +41,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
 - `architecture/overview.md` + `decisions/` (6 ADRs) — pipeline, TCB layers, and the decisions behind them.
-- `spec/` (6 + index) — EffIR, effect signatures, reference semantics, codegen, runtime manifest, error taxonomy.
+- `spec/` (7 + index) — EffIR, effect signatures, reference semantics, codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
 - `properties/` (3 + index) — functional (proven, P1–P8), non-functional (measured, NF1–NF6), edge cases (T1–T10).
 - `external/` (4 + index) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
 - `conventions/` (3 + index) — code style, error handling, testing & proof hygiene.

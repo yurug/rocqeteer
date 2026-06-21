@@ -10,6 +10,10 @@ related: [conv-error-handling, ext-ocaml5-effects, runbook-build-validate]
 ---
 # Spec — Error taxonomy
 
+> ⚠ **Slice-1 status:** most codegen error codes are statically unreachable (the reduced ADT can't
+> represent the bad cases); live errors are the two arity/scope `Codegen_error`s. `run_checked` returns
+> typed `` `Unhandled_effect ``/`` `Unexpected_exception `` (2 arms). See [[slice1-status]].
+
 ## One-liner
 Three error surfaces: the codegen rejects bad input loudly, the runtime maps typed failures to a checked
 result, and CI fails the build on any silent trust expansion.

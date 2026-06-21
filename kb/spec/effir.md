@@ -10,6 +10,9 @@ related: [reference-semantics, codegen, error-taxonomy]
 ---
 # Spec — EffIR (the first-order effect IR)
 
+> ⚠ **Slice-1 status:** the built subset differs — `VZero`/`VSucc` instead of `VPrim (list val)`,
+> `MatchOpt` instead of general `Match`, no `typecheck_ir.ml`. See [[slice1-status]].
+
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
 and the codegen lowers. Pure expressions (`val`) are separated from effectful computations (`tm`) so the

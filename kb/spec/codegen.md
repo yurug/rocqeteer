@@ -10,6 +10,10 @@ refines: []
 ---
 # Spec — Code generation (rocq-eff-codegen)
 
+> ⚠ **Slice-1 status:** built reality differs — one emitted file (all programs), effects/handler
+> hand-written in `runtime/`, no hash header (regenerate-and-diff freshness gate instead), ADT consumed
+> directly. See [[slice1-status]].
+
 ## One-liner
 The codegen consumes the extracted EffIR ADT and prints idiomatic direct-style OCaml 5 by **erasing the
 monadic structure**: no `Bind` constructors, no free-monad interpreter survive into the output.

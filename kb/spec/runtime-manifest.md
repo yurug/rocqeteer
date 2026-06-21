@@ -10,6 +10,10 @@ related: [error-taxonomy, conv-testing-strategy, runbook-audit-checklist]
 ---
 # Spec — Runtime manifest
 
+> ⚠ **Slice-1 status:** `Runtime_KV_refines` is a documented manifest *assumption*, NOT a Rocq `Axiom`
+> (Rocq stays axiom-free); manifest rule 1 (codegen resolves names against the manifest) is not yet
+> enforced — slice-1 prims are inlined. See [[slice1-status]].
+
 ## One-liner
 Nothing crosses from Rocq into OCaml-land untracked: every realizer (pure prim, native data op, effect
 handler) and every refinement axiom has a manifest entry with a contract, tests, and an owner. The manifest
