@@ -13,17 +13,19 @@
 
 module E = Ref_extracted.EffIR
 module D = Ref_extracted.Datatypes
+module S = Ref_extracted.Samples
+module Gen = Generated.Prog0_generated
 
 let key7 = Z.of_int 7
 
-(* Reference: build the map from puts (last-write-wins), run prog0, normalize to sorted Z. *)
-let ref_observe (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+(* Reference: build the map from puts (last-write-wins), run [term], normalize to sorted Z. *)
+let ref_observe (term : E.tm) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
   let m0 =
     List.fold_left
       (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
-  let s' = match E.run D.Coq_nil E.prog0 m0 with D.Coq_pair (_, s) -> s in
+  let s' = match E.run D.Coq_nil term m0 with D.Coq_pair (_, s) -> s in
   Coqconv.list_of_coq (E.M.elements s')
   |> List.map (fun p ->
          match p with
@@ -31,14 +33,25 @@ let ref_observe (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
          | D.Coq_pair (_, _) -> failwith "reference produced a non-int KV value")
   |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
 
-(* Fast: build the Hashtbl from the same puts, run the generated prog0 under the handler. *)
-let fast_observe (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+(* Fast: build the Hashtbl from the same puts, run the generated [fn] under the handler. *)
+let fast_observe (name : string) (fn : unit -> unit) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
   let table = Rkv.Kv.T.create 64 in
   List.iter (fun (k, v) -> Rkv.Kv.T.replace table k v) pairs;
-  (match Rkv.Kv.run_checked table Generated.Prog0_generated.prog0 with
+  (match Rkv.Kv.run_checked table fn with
    | Ok () -> ()
-   | Error e -> failwith ("fast prog0 unhandled: " ^ e));
+   | Error e -> failwith ("fast " ^ name ^ ": " ^ Rkv.Kv.string_of_error e));
   Rkv.Kv.observe table
+
+(* Each program: a reference term + the matching generated function (wrapped to unit). The
+   samples cover ODelete / Ret / multi-Perform / negative literal / deep nesting, so the
+   differential harness exercises every codegen lowering rule, not just prog0's (finding 1). *)
+let programs : (string * E.tm * (unit -> unit)) list =
+  [ ("prog0", E.prog0, fun () -> ignore (Gen.prog0 ()));
+    ("sample_delete", S.sample_delete, fun () -> ignore (Gen.sample_delete ()));
+    ("sample_two", S.sample_two, fun () -> ignore (Gen.sample_two ()));
+    ("sample_ret", S.sample_ret, fun () -> ignore (Gen.sample_ret ()));
+    ("sample_neg", S.sample_neg, fun () -> ignore (Gen.sample_neg ()));
+    ("sample_nested", S.sample_nested, fun () -> ignore (Gen.sample_nested ())) ]
 
 (* --- adversarial, seeded generators (bias toward the edge classes above) --- *)
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621
@@ -80,25 +93,37 @@ let () =
     if key7_present pairs then incr c7pres else incr c7abs;
     if List.length pairs >= 60 then incr clarge;
     if has_dup pairs then incr cdup;
-    let r = ref_observe pairs and f = fast_observe pairs in
-    let eq =
-      List.length r = List.length f
-      && List.for_all2 (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Z.equal v1 v2) r f
-    in
-    if not eq then (
-      incr fails;
-      Printf.printf "MISMATCH (RSEED=%d) state=%s\n  ref =%s\n  fast=%s\n" seed (show pairs) (show r) (show f))
+    (* Every program is compared against the reference on this same state. *)
+    List.iter
+      (fun (name, term, fn) ->
+        let r = ref_observe term pairs and f = fast_observe name fn pairs in
+        let eq =
+          List.length r = List.length f
+          && List.for_all2 (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Z.equal v1 v2) r f
+        in
+        if not eq then (
+          incr fails;
+          Printf.printf "MISMATCH %s (RSEED=%d) state=%s\n  ref =%s\n  fast=%s\n" name seed (show pairs)
+            (show r) (show f)))
+      programs
   done;
-  (* T8 fault injection: an unhandled (unregistered) effect must become a typed error. *)
-  let t8_ok =
+  (* T8 fault injection: both an unhandled (unregistered) effect AND a stray exception must
+     become typed errors at the checked boundary, never a crash (audit C1). *)
+  let t8_unhandled =
     match Rkv.Kv.run_checked (Rkv.Kv.T.create 1) Rkv.Fault.perform_unregistered with
-    | Ok () -> false
-    | Error _ -> true
+    | Error (`Unhandled_effect _) -> true
+    | _ -> false
   in
+  let t8_exn =
+    match Rkv.Kv.run_checked (Rkv.Kv.T.create 1) (fun () -> raise Not_found) with
+    | Error (`Unexpected_exception _) -> true
+    | _ -> false
+  in
+  let t8_ok = t8_unhandled && t8_exn in
   let cov_ok = !c7abs > 0 && !c7pres > 0 && !clarge > 0 && !cdup > 0 in
   Printf.printf
-    "cases=%d fails=%d | coverage: T2(7-absent)=%d 7-present=%d T4(large)=%d T5(dup-keys)=%d | T8=%b\n"
-    n !fails !c7abs !c7pres !clarge !cdup t8_ok;
+    "states=%d programs=%d comparisons=%d fails=%d | coverage: T2(7-absent)=%d 7-present=%d T4(large)=%d T5(dup-keys)=%d | T8=%b\n"
+    n (List.length programs) (n * List.length programs) !fails !c7abs !c7pres !clarge !cdup t8_ok;
   if !fails = 0 && cov_ok && t8_ok then
     print_endline "STEP3 DIFFERENTIAL OK: reference == fast over adversarial states; coverage + T8 asserted"
   else (

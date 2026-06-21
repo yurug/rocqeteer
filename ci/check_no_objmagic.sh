@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 dune build extraction/ >/dev/null 2>&1 || true
-hits=$(grep -rln "Obj.magic" _build/default/extraction codegen runtime support tests 2>/dev/null || true)
+hits=$(grep -rln "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null || true)
 if [ -n "$hits" ]; then
   echo "FAIL: Obj.magic found in:"; echo "$hits"; exit 1
 fi

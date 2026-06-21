@@ -41,9 +41,22 @@ let run (table : value T.t) (f : unit -> 'a) : 'a =
       T.remove table k;
       Effect.Deep.continue kont ()
 
-(** Checked entrypoint: an unhandled effect becomes a typed error, never a crash (T8). *)
+(** A failure surfaced at a public boundary, as a typed value (kb/spec/error-taxonomy.md §2). *)
+type error =
+  [ `Unhandled_effect of string
+  | `Unexpected_exception of string ]
+
+let string_of_error = function
+  | `Unhandled_effect s -> "unhandled effect: " ^ s
+  | `Unexpected_exception s -> "unexpected exception: " ^ s
+
+(** Checked entrypoint: an unhandled effect OR any stray exception becomes a typed error,
+    never a crash (edge case T8 / audit C1). The boundary is the only place failures
+    become observable, and there they are always typed (kb/conventions/error-handling.md). *)
 let run_checked table f =
-  try Ok (run table f) with Effect.Unhandled _ as e -> Error (Printexc.to_string e)
+  try Ok (run table f) with
+  | Effect.Unhandled _ as e -> Error (`Unhandled_effect (Printexc.to_string e))
+  | e -> Error (`Unexpected_exception (Printexc.to_string e))
 
 (** Order-independent observable for differential testing: sorted (key, value). *)
 let observe (table : value T.t) : (Z.t * Z.t) list =

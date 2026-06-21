@@ -19,7 +19,7 @@ rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
-objmagic=$(grep -rl "Obj.magic" _build/default/extraction codegen runtime support tests 2>/dev/null | wc -l | tr -d ' ')
+objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
 admitted=$(grep -rlE 'Admitted\.|(^|[^[:alnum:]_])admit([^[:alnum:]_]|$)' theories 2>/dev/null | wc -l | tr -d ' ')
 genfile=$(find _build/default/generated -name '*_generated.ml' 2>/dev/null | head -1 || true)
 bind=0; [ -n "$genfile" ] && bind=$(grep -cE '\bBind\b' "$genfile" || true)

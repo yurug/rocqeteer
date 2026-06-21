@@ -4,7 +4,7 @@
 # guarantee is `Print Assumptions` -> "Closed under the global context" in the build log.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if grep -rnE 'Admitted\.|(^|[^[:alnum:]_])admit([^[:alnum:]_]|$)|(^|[[:space:]])Axiom[[:space:]]' theories/; then
+if grep -rnE '(^|[[:space:]])(Axiom|Parameter|Hypothesis|Conjecture|Variable|Admitted)([[:space:]]|\.)|(^|[^[:alnum:]_])admit([^[:alnum:]_]|$)' theories/; then
   echo "FAIL: Admitted/admit/Axiom found in theories/"
   exit 1
 fi

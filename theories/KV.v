@@ -44,13 +44,17 @@ Definition cur (k : Z) (s : state) : Z :=
   match M.find k s with Some (DInt z) => z | _ => 0 end.
 
 (** The slice-1 specification: from a store whose value at [k] is absent or an integer,
-    [incr_at k] leaves the counter at [k] equal to [succ] of its previous value. *)
+    [incr_at k] (1) leaves the counter at [k] equal to [succ] of its previous value, and
+    (2) touches no other key (the FRAME clause — without it a clobbering impl would pass;
+    see [incr_clobber_rejected] and audit finding 2). *)
 Definition incr_spec (k : Z) : Spec := {|
   pre  := fun s => match M.find k s with
                    | None | Some (DInt _) => True
                    | Some _ => False
                    end;
-  post := fun s _ s' => M.find k s' = Some (DInt (Z.succ (cur k s)))
+  post := fun s _ s' =>
+            M.find k s' = Some (DInt (Z.succ (cur k s)))
+            /\ (forall k', k' <> k -> M.find k' s' = M.find k' s)
 |}.
 
 (** Keep the map operations as opaque constants so [cbn] reduces only the interpreter
@@ -67,10 +71,12 @@ Proof.
   - (* present: pre forces d = DInt z; both write succ of the stored value *)
     destruct d as [| | z | | | |]; try contradiction;
       cbn [run eval_val handle map nth opt_to_dval];
-      rewrite find_add_same; reflexivity.
+      (split; [ rewrite find_add_same; reflexivity
+              | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
   - (* absent: counter starts at 0, becomes 1 = Z.succ 0 *)
     cbn [run eval_val handle map nth opt_to_dval];
-    rewrite find_add_same; reflexivity.
+    (split; [ rewrite find_add_same; reflexivity
+            | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
 Qed.
 
 (** ** Anti-vacuity 1: the precondition is inhabited (the empty store satisfies it), so
@@ -99,9 +105,38 @@ Proof.
   rewrite empty_o in Hv.
   cbn [run eval_val handle map nth opt_to_dval] in Hv.
   specialize (Hv I).
-  (* the wrong impl wrote 0, but the spec demands succ 0 = 1 *)
-  rewrite find_add_same in Hv.
-  discriminate Hv.
+  (* the wrong impl wrote 0, but the spec's value clause demands succ 0 = 1 *)
+  destruct Hv as [Hval _].
+  rewrite find_add_same in Hval.
+  discriminate Hval.
+Qed.
+
+(** ** Anti-vacuity 3 (frame mutant): an [incr] that correctly increments [k] but also
+    deletes a neighbouring key violates the FRAME clause of the spec. This proves the
+    frame clause is load-bearing — without it, [incr_clobber] would pass (audit finding 2). *)
+Definition incr_clobber (k : Z) : tm :=
+  Bind (Perform OGet [VInt k])
+       (MatchOpt (VVar 0)
+          (Bind (Perform OPut [VInt k; VSucc VZero]) (Perform ODelete [VInt (k + 1)]))
+          (Bind (Perform OPut [VInt k; VSucc (VVar 0)]) (Perform ODelete [VInt (k + 1)]))).
+
+Theorem incr_clobber_rejected : ~ verifies (incr_clobber 0) (incr_spec 0).
+Proof.
+  intro Hv. unfold verifies, incr_clobber, incr_spec, cur in Hv.
+  (* A store where the neighbour key 1 holds a value the clobber will wrongly delete. *)
+  specialize (Hv (M.add 1 (DInt 5) (M.empty dval))).
+  cbn [pre post run eval_val handle map nth opt_to_dval] in Hv.
+  (* find 0 (add 1 5 empty) = None, so the precondition holds. *)
+  rewrite add_neq_o in Hv by congruence. rewrite empty_o in Hv.
+  cbn [run eval_val handle map nth opt_to_dval] in Hv.
+  specialize (Hv I).
+  destruct Hv as [_ Hframe].
+  (* the frame says key 1 is untouched, but the clobber deleted it *)
+  specialize (Hframe 1 ltac:(congruence)).
+  (* LHS: key 1 was deleted -> None; RHS: key 1 originally held 5 *)
+  rewrite remove_eq_o in Hframe by reflexivity.
+  rewrite find_add_same in Hframe.
+  discriminate Hframe.
 Qed.
 
 (** Surface the assumption footprint of the correctness theorem for the TCB report. *)

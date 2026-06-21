@@ -27,7 +27,7 @@ let fast_observe () : (Z.t * Z.t) list =
   let table = Rkv.Kv.T.create 16 in
   (match Rkv.Kv.run_checked table Generated.Prog0_generated.prog0 with
    | Ok () -> ()
-   | Error e -> failwith ("unhandled effect / exception in fast prog0: " ^ e));
+   | Error e -> failwith ("fast prog0: " ^ Rkv.Kv.string_of_error e));
   Rkv.Kv.observe table
 
 let show l =

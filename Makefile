@@ -24,7 +24,7 @@ test: ## differential tests (reference vs fast)
 tcb-report: ## regenerate docs/tcb_report.md from live build facts
 	./ci/gen_tcb_report.sh
 
-ci-checks: build-fast ## TCB / forbidden-API gates
+ci-checks: build-fast test ## TCB / forbidden-API gates (require the differential tests to pass)
 	./ci/check_no_objmagic.sh
 	./ci/check_no_bind_in_generated.sh
 	./ci/check_no_stray_perform.sh

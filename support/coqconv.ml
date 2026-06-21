@@ -27,7 +27,9 @@ let bool_of_coq (b : Datatypes.bool) : bool =
 (* Reverse direction: build the extracted Coq integers from zarith, so the differential
    test can construct adversarial reference states (kb/plan.md Resolution 5). *)
 let rec pos_of_z (z : Z.t) : BinNums.positive =
-  (* precondition: z >= 1 *)
+  (* [positive] encodes strictly-positive integers; guard the precondition instead of
+     looping forever on 0 / negatives (audit M5). Callers go through [coqz_of_z]. *)
+  if Z.sign z <= 0 then invalid_arg "Coqconv.pos_of_z: argument must be >= 1";
   if Z.equal z Z.one then BinNums.Coq_xH
   else if Z.equal (Z.rem z (Z.of_int 2)) Z.zero then
     BinNums.Coq_xO (pos_of_z (Z.div z (Z.of_int 2)))
