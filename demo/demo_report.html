@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocqeteer demo — audited counter</title>
+<style>
+ :root{--bg:#0a0e1a;--panel:#121829;--ink:#e6ebff;--mut:#93a0c4;--line:#222c44;--ok:#4ade80;--bad:#ff6b6b;--acc:#6ea8fe;--hi:#ffd166;}
+ *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
+ .wrap{max-width:980px;margin:0 auto;padding:40px 24px 80px}
+ h1{font-size:28px;margin:0 0 4px} .sub{color:var(--mut);margin:0 0 18px}
+ .pipe{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:18px 0}
+ .pipe .n{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px}
+ .pipe .a{color:var(--acc)}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:16px 0}
+ .card h2{font-size:17px;margin:0 0 10px;color:var(--acc)}
+ .step{display:inline-flex;width:24px;height:24px;border-radius:7px;align-items:center;justify-content:center;background:#0c1120;border:1px solid var(--line);color:var(--acc);font-weight:700;margin-right:8px}
+ pre{background:#0c1120;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfe0ff}
+ .kv{font:14px ui-monospace,monospace;color:var(--hi)}
+ .ok{color:var(--ok)} .bad{color:var(--bad)} .mut{color:var(--mut)}
+ table{border-collapse:collapse;width:100%;font-size:13.5px} td,th{border:1px solid var(--line);padding:7px 10px;text-align:left} th{color:var(--mut);font-weight:600}
+ .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+ .pill.ok{background:#0f2a18;border-color:#1f5e36} .pill.bad{background:#2a1010;border-color:#5e1f1f}
+ .foot{color:var(--mut);font-size:12.5px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px}
+</style></head><body><div class="wrap">
+ <h1>Rocqeteer — an audited counter, end to end</h1>
+ <p class="sub">Prove it in Rocq · generate idiomatic OCaml · run it · validate the bridge. Result: <span class="pill ok">reference == fast</span> &nbsp; <span class="pill ok">round-trip OK</span></p>
+
+ <div class="pipe">
+  <span class="n">Rocq EffIR + proof</span><span class="a">&rarr;</span>
+  <span class="n">extract</span><span class="a">&rarr;</span>
+  <span class="n">rocq-eff-codegen</span><span class="a">&rarr;</span>
+  <span class="n">direct-style OCaml 5</span><span class="a">&rarr;</span>
+  <span class="n">Env &deg; Trace &deg; KV handlers</span><span class="a">&rarr;</span>
+  <span class="n">differential check</span>
+ </div>
+
+ <p class="mut">The program composes <b>Env</b> (read an audit tag), <b>Trace</b> (log it), <b>recursion</b>
+ (bump a hit-counter 3&times;), and <b>KV</b> (persist the tag) — then the result is serialized via a codec
+ whose round-trip is proven.</p>
+
+ <div class="card"><h2><span class="step">1</span>Written &amp; proven in Rocq</h2>
+  <p class="mut">The source — a first-order EffIR term:</p>
+  <pre>Definition demo_prog : tm :=
+  Bind (Perform OAsk [])
+       (Bind (Perform OTrace [VVar 0])
+             (Bind (Repeat 3 (incr_at 0))
+                   (Perform OPut [VInt 9; VVar 2]))).</pre>
+  <p class="mut">The machine-checked theorem (full functional result for the concrete run):</p>
+  <pre>Theorem demo_correct :
+  let '(_, w) := run [] demo_prog (init_world (DInt 99)) in
+     M.find 0 w.(kv) = Some (DInt 3)          (* counter bumped 3 times *)
+  /\ M.find 9 w.(kv) = Some (DInt 99)          (* audit tag persisted *)
+  /\ rev w.(trace) = [DInt 99].                (* trace recorded the tag *)
+Proof. vm_compute. repeat split. Qed.</pre>
+  <p><span class="ok">&#10003;</span> <code>Print Assumptions demo_correct</code> = <b>"Closed under the global context"</b> — 0 axioms.</p>
+ </div>
+
+ <div class="card"><h2><span class="step">2</span>Code-generated to idiomatic OCaml 5</h2>
+  <p class="mut">Direct style — the monad is erased; no interpreter, just effect calls and a native for-loop:</p>
+  <pre>let demo_prog () = (let v0 = (Env.ask ()) in (let v1 = (Trace.emit v0) in (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Z.of_string "0")) in (match v2 with None -&gt; (Kv.put (Z.of_string "0") (Z.succ Z.zero)) | Some v3 -&gt; (Kv.put (Z.of_string "0") (Z.succ v3))))) done) in (Kv.put (Z.of_string "9") v0))))
+</pre>
+ </div>
+
+ <div class="card"><h2><span class="step">3</span>Run under the native handler stack</h2>
+  <p>context (audit tag) = <span class="kv">99</span></p>
+  <p>final store: <span class="kv">{ 0&rarr;3, 9&rarr;99 }</span></p>
+  <p>audit trace: <span class="kv">[99]</span></p>
+ </div>
+
+ <div class="card"><h2><span class="step">4</span>Validated — proven reference vs. fast OCaml</h2>
+  <table><tr><th></th><th>store</th><th>trace</th></tr>
+   <tr><td class="mut">reference (pure Rocq interpreter)</td><td class="kv">{ 0&rarr;3, 9&rarr;99 }</td><td class="kv">[99]</td></tr>
+   <tr><td class="mut">fast (generated + handlers)</td><td class="kv">{ 0&rarr;3, 9&rarr;99 }</td><td class="kv">[99]</td></tr></table>
+  <p style="margin-top:10px"><span class="ok">reference == fast</span> &nbsp; differential check.</p>
+  <p>persistence via the proven codec: <code>(3,99)</code> &rarr; bytes <code>01 33 02 39 39</code> &rarr; decode &rarr; <code>(3,99)</code> &nbsp; <span class="ok">round-trip OK</span></p>
+ </div>
+
+ <div class="card"><h2>The trust ledger</h2>
+  <table><tr><th>layer</th><th>status</th></tr>
+   <tr><td>program meets its spec under the reference semantics</td><td class="ok">PROVEN (Rocq, 0 axioms)</td></tr>
+   <tr><td>codec round-trip (decode &deg; encode = id)</td><td class="ok">PROVEN (Rocq, 0 axioms)</td></tr>
+   <tr><td>OCaml compiler/runtime, codegen, effect handlers, realizers</td><td class="mut">TRUSTED + differentially tested</td></tr>
+   <tr><td>Obj.magic / unregistered Extract Constant / hidden axioms</td><td class="ok">0 (CI-enforced)</td></tr>
+   <tr><td>performance &amp; determinism</td><td class="mut">MEASURED (CI gates)</td></tr></table>
+ </div>
+
+ <p class="foot">Generated by the Rocqeteer demo (make demo). Effects: State · Error · Env · Trace · Cache, plus bounded recursion and a verified codec. Toolchain: Rocq 9.1.1 / OCaml 5.4.1.</p>
+</div></body></html>

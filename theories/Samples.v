@@ -80,6 +80,17 @@ Definition sample_cache : tm :=
     [n] iterations from empty, key 0 holds [n] (proven by induction in theories/Recur.v). *)
 Definition sample_count : tm := Repeat 5 (incr_at 0).
 
+(** DEMO: an "audited counter" composing Env + Trace + recursion + KV. Read an audit tag
+    from the read-only context (Env), log it (Trace), bump a hit-counter at key 0 three
+    times (Repeat over KV), then persist the tag at key 9 (KV). From context tag 99:
+    key 0 = 3, key 9 = 99, trace = [99]. Proven in theories/Demo.v, run end-to-end by the
+    demo (make demo). de Bruijn: after Ask the tag is db0; the final Put sees it at db2. *)
+Definition demo_prog : tm :=
+  Bind (Perform OAsk [])
+       (Bind (Perform OTrace [VVar 0])
+             (Bind (Repeat 3 (incr_at 0))
+                   (Perform OPut [VInt 9; VVar 2]))).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -96,4 +107,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_env"%string, sample_env);
     ("sample_trace"%string, sample_trace);
     ("sample_cache"%string, sample_cache);
-    ("sample_count"%string, sample_count) ].
+    ("sample_count"%string, sample_count);
+    ("demo_prog"%string, demo_prog) ].

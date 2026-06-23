@@ -37,7 +37,14 @@ Requires (verified versions): **Rocq 9.1.1, OCaml 5.4.1, dune 3.23.0, qcheck, za
 ```bash
 make smoke        # day-zero gate: Rocq theory builds, extraction round-trips, OCaml 5 effects compile
 make all          # the whole pipeline + every gate (this is the validation script)
+make demo         # end-to-end narrated walkthrough of an "audited counter" + an HTML report
 ```
+
+`make demo` is the quickest way to see the whole thesis in action: it takes one composed program
+(`demo_prog` — Env + Trace + recursion + KV), shows its Rocq source and proven theorem, the idiomatic OCaml
+the codegen produced, runs it under the native handlers, and confirms the proven reference agrees with the
+fast OCaml (plus a codec round-trip) — printing a colorized terminal story and writing
+`demo/demo_report.html`.
 
 `make all` runs, in order, and fails loudly at the first broken link:
 

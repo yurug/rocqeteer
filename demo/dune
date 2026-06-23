@@ -1,0 +1,4 @@
+(executable
+ (name demo)
+ (modules demo demo_html)
+ (libraries ref_extracted coqconv rkv generated zarith str))

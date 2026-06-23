@@ -64,6 +64,10 @@ The five-effect MVP family, bounded recursion, and the GADT codec pilot are all 
 - ✅ 6 **Codec pilot** (GADT witnesses): proven round-trip in `theories/Codec.v` + GADT/`bytes` realizer
   (no unsafe casts), property-tested. The realistic A3 target.
 
+✅ **Demo** (`make demo`): the composed `demo_prog` (Env+Trace+recursion+KV) shown end-to-end — Rocq
+source + proven theorem (`theories/Demo.v`, vm_compute) → generated OCaml → live run → reference==fast →
+codec round-trip; narrated CLI + `demo/demo_report.html`.
+
 Effects compose; every effect/feature is proven axiom-free in Rocq and differentially/property tested.
 Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 
