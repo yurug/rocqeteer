@@ -64,3 +64,14 @@ Definition sample_trace : tm :=
   Bind (Perform OTrace [VInt 10])
        (Bind (Perform OPut [VInt 1; VSucc VZero])
              (Perform OTrace [VInt 20])).
+
+(** CACHE + KV composed (memoize): look up key 0 in the cache; on a HIT store the cached
+    value at key 1, on a MISS compute [succ zero]=1, cache it at 0, and store it at key 1.
+    The KV result (key 1) is the same whether the cache hits or misses with the correct
+    value — that observational invisibility is what [theories/Cache.v] proves. *)
+Definition sample_cache : tm :=
+  Bind (Perform OCacheGet [VInt 0])
+       (MatchOpt (VVar 0)
+          (Bind (Perform OCachePut [VInt 0; VSucc VZero])
+                (Perform OPut [VInt 1; VSucc VZero]))
+          (Perform OPut [VInt 1; VVar 0])).

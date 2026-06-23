@@ -77,6 +77,22 @@ validated_by = ["diff_trace (3000 states; log [10;20] in order)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[effect."Cache"]
+ocaml_module = "Rkv.Cache"
+ops          = ["CGet", "CPut"]
+backend      = "Effect.Deep handler over a separate Hashtbl; never exposed by observe"
+value_type   = "Z (zarith)"
+tests        = ["diff_cache"]
+owner        = "yann"
+
+[assumption."Runtime_Cache_invisible"]
+statement    = "KV observable of (Cache.run c (Kv.run (fast p))) is independent of c when c is a correct memo (hit == miss)"
+reference    = "EffIR.world.cache, kept out of observe (cache_invisible; run_cache_uses_value shows the value is read)"
+fast         = "Cache.get/put over a Hashtbl the handler holds"
+validated_by = ["diff_cache (3000 states; reference == fast-miss == fast-hit)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 # The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.

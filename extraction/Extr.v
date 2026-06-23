@@ -6,4 +6,4 @@ Separate Extraction
   Samples.sample_delete Samples.sample_two Samples.sample_ret
   Samples.sample_neg Samples.sample_nested
   Samples.sample_throw Samples.sample_guard5
-  Samples.sample_env Samples.sample_trace.
+  Samples.sample_env Samples.sample_trace Samples.sample_cache.

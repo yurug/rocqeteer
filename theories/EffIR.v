@@ -45,9 +45,11 @@ Inductive val : Type :=
 | VZero : val
 | VSucc : val -> val.
 
-(** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env, reads the
-    read-only context), and [OTrace] (Trace, appends an event) — kb/spec/effect-signatures.md. *)
-Inductive op : Type := OGet | OPut | ODelete | OThrow | OAsk | OTrace.
+(** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env), [OTrace]
+    (Trace), and [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
+    is observationally invisible) — kb/spec/effect-signatures.md. *)
+Inductive op : Type :=
+  | OGet | OPut | ODelete | OThrow | OAsk | OTrace | OCacheGet | OCachePut.
 
 (** The result of running a computation: a normal value, or an error that aborted it.
     This is what lets [Bind] short-circuit on [OThrow] (the Error effect). *)
@@ -93,10 +95,12 @@ Record world : Type := mkWorld {
   kv    : state;
   ctx   : dval;
   trace : list dval;
+  cache : state;       (* memo store; deliberately NOT exposed by [observe] *)
 }.
 
-Definition set_kv    (w : world) (m : state)     : world := mkWorld m w.(ctx) w.(trace).
-Definition set_trace (w : world) (l : list dval) : world := mkWorld w.(kv) w.(ctx) l.
+Definition set_kv    (w : world) (m : state)     : world := mkWorld m w.(ctx) w.(trace) w.(cache).
+Definition set_trace (w : world) (l : list dval) : world := mkWorld w.(kv) w.(ctx) l w.(cache).
+Definition set_cache (w : world) (c : state)     : world := mkWorld w.(kv) w.(ctx) w.(trace) c.
 
 (** ** Pure KV handler over the map: the reference semantics of the KV operations. *)
 Definition handle_kv (o : op) (args : list dval) (s : state) : dval * state :=
@@ -127,6 +131,14 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
                   | [v] => (ORet DUnit, set_trace w (v :: w.(trace)))
                   | _   => (ORet Dstuck, w)
                   end
+      | OCacheGet => match vs with
+                     | [DInt k] => (ORet (opt_to_dval (M.find k w.(cache))), w)
+                     | _        => (ORet Dstuck, w)
+                     end
+      | OCachePut => match vs with
+                     | [DInt k; v] => (ORet DUnit, set_cache w (M.add k v w.(cache)))
+                     | _           => (ORet Dstuck, w)
+                     end
       | _      => let '(r, s') := handle_kv o vs w.(kv) in (ORet r, set_kv w s')
       end
   | MatchOpt scrut none some =>
@@ -137,8 +149,8 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
       end
   end.
 
-(** Initial world: empty store, the given [c] context, empty trace. *)
-Definition init_world (c : dval) : world := mkWorld (M.empty dval) c [].
+(** Initial world: empty store, the given [c] context, empty trace, empty cache. *)
+Definition init_world (c : dval) : world := mkWorld (M.empty dval) c [] (M.empty dval).
 
 Definition run_top (c : dval) (t : tm) : outcome * world := run [] t (init_world c).
 
@@ -150,7 +162,7 @@ Definition observe (c : dval) (t : tm) : outcome * list (Z * dval) * list dval :
     entry point the differential tests use (they seed a non-empty state). *)
 Definition observe_full (c : dval) (s : state) (t : tm)
   : outcome * list (Z * dval) * list dval :=
-  let '(r, w) := run [] t (mkWorld s c []) in (r, M.elements w.(kv), rev w.(trace)).
+  let '(r, w) := run [] t (mkWorld s c [] (M.empty dval)) in (r, M.elements w.(kv), rev w.(trace)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x). *)

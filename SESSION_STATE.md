@@ -38,17 +38,22 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
   `theories/Error.v` (law + abort + mutant, axiom-free); `runtime/err.ml`; `tests/diff_err.ml`.
 - ✅ **Iteration 2 — `Env` effect (`OAsk`).** read-only `ctx`; `theories/Env.v` (laws + mutant, axiom-free);
   `runtime/env.ml`; `tests/diff_env.ml`. Three-deep (Env ∘ Error ∘ KV).
-- ✅ **Iteration 3 — `world` refactor + `Trace` effect (`OTrace`).** `run` now threads one `world` record
-  `{ kv; ctx; trace }`, so future effects add a FIELD not a parameter. KV/Error/Env proofs re-proved over
-  `world` (still axiom-free). `theories/Trace.v` (`sample_trace_records` + order-matters mutant);
-  `runtime/trace.ml` buffer handler; `tests/diff_trace.ml` (log + state, 3000 states). All diff tests use a
-  single `observe_full` entry point. Four-deep (Trace ∘ Env ∘ Error ∘ KV). `make all` green.
+- ✅ **Iteration 3 — `world` refactor + `Trace` effect (`OTrace`).** `run` threads one `world` record
+  `{ kv; ctx; trace }`; future effects add a FIELD. `theories/Trace.v` (order law + mutant);
+  `runtime/trace.ml`; `tests/diff_trace.ml`. All diff tests use one `observe_full` entry point.
+- ✅ **Iteration 4 — `Cache` effect (`OCacheGet`/`OCachePut`).** Added as a `world.cache` FIELD (the refactor
+  paying off) kept OUT of `observe`. `theories/Cache.v`: `cache_invisible` (hit ≡ miss) + `run_cache_uses_value`
+  (anti-vacuity), axiom-free. `runtime/cache.ml` Hashtbl handler; `tests/diff_cache.ml` metamorphic
+  (reference == fast-miss == fast-hit). **Completes the report's five-effect MVP family** (State, Error, Env,
+  Trace, Cache), all composed, all axiom-free, all differentially tested. `make all` green.
 
 ## Exact next step
-1. **`Cache`** (memoization, observationally invisible) — now cheap: add a `cache` field to `world` + a
-   `Hashtbl` handler; the property is metamorphic (cache-hit ≡ cache-miss), not a new observable.
-2. Recursion in EffIR (structural/fuel); GADT witnesses; the `data-encoding`-style codec pilot.
-3. Tooling: auto-generate the `Extract`/codegen/test program lists (now hand-maintained in 3 places).
+The five-effect MVP family is complete. Remaining breadth, in rough order:
+1. **Recursion in EffIR** (structural over lists/trees, or bounded/fuel loops) — the next fragment expansion
+   (changes `effir.md`'s in-scope set; update [[slice1-status]]).
+2. **GADT witnesses** (typed encodings) and the **`data-encoding`-style codec pilot** (the realistic A3 target).
+3. Tooling: auto-generate the `Extract`/codegen/test program lists (hand-maintained in 3 places).
+4. Optional: Mode B (recognized monadic Gallina via MetaRocq) — only once it's packaged for Rocq 9.x.
 Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 
 ## Open / deferred

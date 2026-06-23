@@ -30,6 +30,12 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
   appends to `world.trace`; `theories/Trace.v` proves `sample_trace_records` (events in order) + an
   order-matters mutant; `runtime/trace.ml` is the buffer handler; `tests/diff_trace.ml` checks the log
   + state over 3000 states. Effects now compose four-deep (Trace ∘ Env ∘ Error ∘ KV).
+- **Cache effect** (breadth iteration 4): `OCacheGet`/`OCachePut` over a `world.cache` field kept OUT
+  of `observe` (observationally invisible). `theories/Cache.v` proves `cache_invisible` (a correct HIT and
+  a MISS give the same KV result) plus `run_cache_uses_value` (the cached value is genuinely read, so the
+  invisibility is non-trivial) — axiom-free. `runtime/cache.ml` is a separate Hashtbl handler;
+  `tests/diff_cache.ml` is metamorphic (reference == fast-miss == fast-hit, 3000 states). This completes
+  the report's five-effect MVP family (State, Error, Env, Trace, Cache).
 - **Error effect** (breadth iteration 1): `OThrow` aborts the computation; `theories/Error.v` proves the
   algebraic law `throw e ;; k = throw e`, a concrete abort (`sample_throw_aborts`), and a no-throw mutant —
   all axiom-free. `runtime/err.ml` is the native-exception backend (`throw`/`run_error`); `tests/diff_err.ml`
@@ -67,7 +73,7 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 
 ## Deferred to breadth (post-slice, by design)
 General `Match`/`VPrim` + `typecheck_ir.ml`; generated effects/handlers modules + hash headers; manifest-driven
-prim resolution; abstract `TNamed` realization; the `Cache` effect; recursion; GADT witnesses;
+prim resolution; abstract `TNamed` realization; recursion; GADT witnesses;
 the codec pilot. (`Error`, `Env`, `Trace` are now built — see above.)
 
 ## Agent notes

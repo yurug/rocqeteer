@@ -44,7 +44,7 @@ Record Spec : Type := {
 Definition verifies (t : tm) (sp : Spec) : Prop :=
   forall s, pre sp s ->
     (* run from a world whose KV map is [s]; the spec constrains the final map [w'.(kv)]. *)
-    let '(x, w') := run [] t (mkWorld s DUnit []) in post sp s x w'.(kv).
+    let '(x, w') := run [] t (mkWorld s DUnit [] (M.empty dval)) in post sp s x w'.(kv).
 
 (** The current integer counter at [k] (0 if absent or non-integer). *)
 Definition cur (k : Z) (s : state) : Z :=
