@@ -20,20 +20,20 @@ Proof. intros; apply add_eq_o; reflexivity. Qed.
 (** ** Algebraic law: throwing aborts the bind — the continuation [k] is discarded and the
     state [s] is unchanged, for ANY error expression [e] and continuation [k]
     (the report's "throw e >>= k = throw e"). *)
-Lemma throw_aborts : forall env ctx e k s,
-  run env ctx (Bind (Perform OThrow [e]) k) s = (OErr (eval_val env e), s).
-Proof. intros; cbn [run eval_val nth]; reflexivity. Qed.
+Lemma throw_aborts : forall env e k w,
+  run env (Bind (Perform OThrow [e]) k) w = (OErr (eval_val env e), w).
+Proof. intros; cbn [run eval_val map nth]; reflexivity. Qed.
 
 (** ** Concrete abort: [sample_throw] = put 1; throw 99; put 2. The outcome is the error,
     the pre-throw write to key 1 committed, and the post-throw write to key 2 never happened. *)
 Theorem sample_throw_aborts :
-  let '(o, s') := run [] DUnit sample_throw (M.empty dval) in
+  let '(o, w') := run [] sample_throw (init_world DUnit) in
   o = OErr (DInt 99)
-  /\ M.find 1 s' = Some (DInt 1)
-  /\ M.find 2 s' = None.
+  /\ M.find 1 w'.(kv) = Some (DInt 1)
+  /\ M.find 2 w'.(kv) = None.
 Proof.
   unfold sample_throw.
-  cbn [run eval_val handle map nth opt_to_dval].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
   split; [ reflexivity | split ].
   - rewrite find_add_same; reflexivity.
   - rewrite add_neq_o by congruence; rewrite empty_o; reflexivity.
@@ -48,11 +48,11 @@ Definition sample_nothrow : tm :=
              (Perform OPut [VInt 2; VSucc (VSucc VZero)])).
 
 Theorem sample_nothrow_completes :
-  let '(o, s') := run [] DUnit sample_nothrow (M.empty dval) in
-  o = ORet DUnit /\ M.find 2 s' = Some (DInt 2).
+  let '(o, w') := run [] sample_nothrow (init_world DUnit) in
+  o = ORet DUnit /\ M.find 2 w'.(kv) = Some (DInt 2).
 Proof.
   unfold sample_nothrow.
-  cbn [run eval_val handle map nth opt_to_dval].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
   split; [ reflexivity | rewrite find_add_same; reflexivity ].
 Qed.
 

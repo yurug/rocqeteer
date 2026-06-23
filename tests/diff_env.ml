@@ -16,11 +16,11 @@ let ref_state (ctx : Z.t) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
       (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
-  let s' =
-    match E.run D.Coq_nil (E.DInt (Coqconv.coqz_of_z ctx)) S.sample_env m0 with
-    | D.Coq_pair (_, s) -> s
+  let bindings =
+    match E.observe_full (E.DInt (Coqconv.coqz_of_z ctx)) m0 S.sample_env with
+    | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
   in
-  Coqconv.list_of_coq (E.M.elements s')
+  Coqconv.list_of_coq bindings
   |> List.map (fun p ->
          match p with
          | D.Coq_pair (k, E.DInt v) -> (z_of k, z_of v)

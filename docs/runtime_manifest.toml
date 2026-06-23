@@ -61,6 +61,22 @@ validated_by = ["diff_env (3000 states; context lands at key 1)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[effect."Trace"]
+ocaml_module = "Rkv.Trace"
+ops          = ["Emit"]
+backend      = "Effect.Deep handler appending to a buffer (newest-first; contents reverses)"
+event_type   = "Z (zarith)"
+tests        = ["diff_trace"]
+owner        = "yann"
+
+[assumption."Runtime_Trace_refines"]
+statement    = "Trace.contents (Trace.run (Kv.run (fast p))) = chronological trace of reference p"
+reference    = "EffIR.world.trace (newest-first), reversed by observe (sample_trace_records)"
+fast         = "Trace.emit appends to a ref buffer; Trace.contents reverses"
+validated_by = ["diff_trace (3000 states; log [10;20] in order)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 # The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.

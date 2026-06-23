@@ -21,7 +21,9 @@ let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
       (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
-  let oc, s' = match E.run D.Coq_nil E.DUnit term m0 with D.Coq_pair (o, s) -> (o, s) in
+  let oc, bindings =
+    match E.observe_full E.DUnit m0 term with D.Coq_pair (D.Coq_pair (o, bs), _tr) -> (o, bs)
+  in
   let err =
     match oc with
     | E.ORet _ -> None
@@ -29,7 +31,7 @@ let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
     | E.OErr _ -> failwith "reference: non-int error value"
   in
   let state =
-    Coqconv.list_of_coq (E.M.elements s')
+    Coqconv.list_of_coq bindings
     |> List.map (fun p ->
            match p with
            | D.Coq_pair (k, E.DInt v) -> (z_of k, z_of v)

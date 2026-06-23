@@ -45,9 +45,9 @@ Inductive val : Type :=
 | VZero : val
 | VSucc : val -> val.
 
-(** ** Effect operations: KV, [OThrow] (Error), and [OAsk] (Env, reads the read-only
-    context) — kb/spec/effect-signatures.md. *)
-Inductive op : Type := OGet | OPut | ODelete | OThrow | OAsk.
+(** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env, reads the
+    read-only context), and [OTrace] (Trace, appends an event) — kb/spec/effect-signatures.md. *)
+Inductive op : Type := OGet | OPut | ODelete | OThrow | OAsk | OTrace.
 
 (** The result of running a computation: a normal value, or an error that aborted it.
     This is what lets [Bind] short-circuit on [OThrow] (the Error effect). *)
@@ -85,8 +85,21 @@ Definition state : Type := M.t dval.
 Definition opt_to_dval (o : option dval) : dval :=
   match o with Some v => DSome v | None => DNone end.
 
-(** ** Pure KV handler: the reference semantics of each operation. *)
-Definition handle (o : op) (args : list dval) (s : state) : dval * state :=
+(** ** The [world]: ALL ambient effect state bundled into one record, so adding an effect
+    adds a FIELD here rather than another parameter to [run] (the refactor that motivated
+    the Trace iteration). [kv] is the KV map, [ctx] the read-only Env context, [trace] the
+    Trace log stored newest-first (reversed to chronological by [observe]). *)
+Record world : Type := mkWorld {
+  kv    : state;
+  ctx   : dval;
+  trace : list dval;
+}.
+
+Definition set_kv    (w : world) (m : state)     : world := mkWorld m w.(ctx) w.(trace).
+Definition set_trace (w : world) (l : list dval) : world := mkWorld w.(kv) w.(ctx) l.
+
+(** ** Pure KV handler over the map: the reference semantics of the KV operations. *)
+Definition handle_kv (o : op) (args : list dval) (s : state) : dval * state :=
   match o, args with
   | OGet,    [DInt k]        => (opt_to_dval (M.find k s), s)
   | OPut,    [DInt k; v]     => (DUnit, M.add k v s)
@@ -94,37 +107,50 @@ Definition handle (o : op) (args : list dval) (s : state) : dval * state :=
   | _, _                     => (Dstuck, s)
   end.
 
-(** ** The reference interpreter. Structurally recursive on [t], hence total. [Bind]
-    short-circuits when its first computation aborts ([OErr]); [OThrow e] aborts with the
-    error value [e] and leaves the state untouched (the committed state up to the throw).
-    [ctx] is the read-only Env context that [OAsk] reads; it is threaded unchanged. *)
-Fixpoint run (env : list dval) (ctx : dval) (t : tm) (s : state) : outcome * state :=
+(** ** The reference interpreter, threading one [world]. Structurally recursive on [t],
+    hence total. [Bind] short-circuits on abort ([OErr]); [OThrow e] aborts; [OAsk] reads
+    [ctx]; [OTrace v] appends [v] to the log; KV ops update [kv]. *)
+Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
   match t with
-  | Ret v        => (ORet (eval_val env v), s)
+  | Ret v        => (ORet (eval_val env v), w)
   | Bind t1 t2   =>
-      match run env ctx t1 s with
-      | (ORet x, s') => run (x :: env) ctx t2 s'
-      | (OErr e, s') => (OErr e, s')   (* abort: the continuation does not run *)
+      match run env t1 w with
+      | (ORet x, w') => run (x :: env) t2 w'
+      | (OErr e, w') => (OErr e, w')   (* abort: the continuation does not run *)
       end
   | Perform o args =>
+      let vs := map (eval_val env) args in
       match o with
-      | OThrow => (OErr (eval_val env (nth 0 args VUnit)), s)
-      | OAsk   => (ORet ctx, s)
-      | _      => let '(r, s') := handle o (map (eval_val env) args) s in (ORet r, s')
+      | OThrow => (OErr (nth 0 vs Dstuck), w)
+      | OAsk   => (ORet w.(ctx), w)
+      | OTrace => match vs with
+                  | [v] => (ORet DUnit, set_trace w (v :: w.(trace)))
+                  | _   => (ORet Dstuck, w)
+                  end
+      | _      => let '(r, s') := handle_kv o vs w.(kv) in (ORet r, set_kv w s')
       end
   | MatchOpt scrut none some =>
       match eval_val env scrut with
-      | DNone   => run env ctx none s
-      | DSome x => run (x :: env) ctx some s
-      | _       => (ORet Dstuck, s)
+      | DNone   => run env none w
+      | DSome x => run (x :: env) some w
+      | _       => (ORet Dstuck, w)
       end
   end.
 
-Definition run_top (ctx : dval) (t : tm) : outcome * state := run [] ctx t (M.empty dval).
+(** Initial world: empty store, the given [c] context, empty trace. *)
+Definition init_world (c : dval) : world := mkWorld (M.empty dval) c [].
 
-(** The order-independent observable: outcome + sorted key/value bindings. *)
-Definition observe (ctx : dval) (t : tm) : outcome * list (Z * dval) :=
-  let '(r, s) := run_top ctx t in (r, M.elements s).
+Definition run_top (c : dval) (t : tm) : outcome * world := run [] t (init_world c).
+
+(** The observable: outcome + sorted key/value bindings + the trace in chronological order. *)
+Definition observe (c : dval) (t : tm) : outcome * list (Z * dval) * list dval :=
+  let '(r, w) := run_top c t in (r, M.elements w.(kv), rev w.(trace)).
+
+(** Like [observe] but from a custom initial KV state [s] (and context [c]); the single
+    entry point the differential tests use (they seed a non-empty state). *)
+Definition observe_full (c : dval) (s : state) (t : tm)
+  : outcome * list (Z * dval) * list dval :=
+  let '(r, w) := run [] t (mkWorld s c []) in (r, M.elements w.(kv), rev w.(trace)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x). *)

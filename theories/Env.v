@@ -18,22 +18,22 @@ Lemma find_add_same : forall k (v : dval) (s : state), M.find k (M.add k v s) = 
 Proof. intros; apply add_eq_o; reflexivity. Qed.
 
 (** [ask] returns the context and leaves the state unchanged. *)
-Lemma ask_reads_ctx : forall env ctx s,
-  run env ctx (Perform OAsk []) s = (ORet ctx, s).
+Lemma ask_reads_ctx : forall env w,
+  run env (Perform OAsk []) w = (ORet w.(ctx), w).
 Proof. intros; reflexivity. Qed.
 
 (** Idempotence: "ask ;; ask = ask" — reading twice yields the same context and state. *)
-Lemma ask_ask : forall env ctx s,
-  run env ctx (Bind (Perform OAsk []) (Perform OAsk [])) s = (ORet ctx, s).
+Lemma ask_ask : forall env w,
+  run env (Bind (Perform OAsk []) (Perform OAsk [])) w = (ORet w.(ctx), w).
 Proof. intros; reflexivity. Qed.
 
 (** Concrete: [sample_env] = ask; put 1 := asked value. Key 1 ends up holding the context. *)
 Theorem sample_env_lands : forall c,
-  let '(o, s') := run [] (DInt c) sample_env (M.empty dval) in
-  o = ORet DUnit /\ M.find 1 s' = Some (DInt c).
+  let '(o, w') := run [] sample_env (init_world (DInt c)) in
+  o = ORet DUnit /\ M.find 1 w'.(kv) = Some (DInt c).
 Proof.
   intro c. unfold sample_env.
-  cbn [run eval_val handle map nth opt_to_dval].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
   split; [ reflexivity | rewrite find_add_same; reflexivity ].
 Qed.
 
@@ -43,11 +43,11 @@ Definition sample_env_wrong : tm :=
   Bind (Perform OAsk []) (Perform OPut [VInt 1; VZero]).
 
 Theorem sample_env_wrong_ignores_ctx : forall c, c <> 0 ->
-  let '(_, s') := run [] (DInt c) sample_env_wrong (M.empty dval) in
-  M.find 1 s' <> Some (DInt c).
+  let '(_, w') := run [] sample_env_wrong (init_world (DInt c)) in
+  M.find 1 w'.(kv) <> Some (DInt c).
 Proof.
   intros c Hc. unfold sample_env_wrong.
-  cbn [run eval_val handle map nth opt_to_dval].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
   rewrite find_add_same. congruence.
 Qed.
 

@@ -57,3 +57,10 @@ Definition sample_guard5 : tm :=
 Definition sample_env : tm :=
   Bind (Perform OAsk [])
        (Perform OPut [VInt 1; VVar 0]).
+
+(** TRACE + KV composed: emit 10; put 1 := 1; emit 20 — the trace must record [10; 20] in
+    order, and the put must commit, exercising [OTrace] interleaved with KV. *)
+Definition sample_trace : tm :=
+  Bind (Perform OTrace [VInt 10])
+       (Bind (Perform OPut [VInt 1; VSucc VZero])
+             (Perform OTrace [VInt 20])).

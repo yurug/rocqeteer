@@ -30,7 +30,7 @@ Qed.
 (** Get-then-get is idempotent: a read does not mutate the store, so a second read sees the
     same value and state (the state law "get k ;; get k = get k", P7's third law). *)
 Lemma get_get : forall k (s : state),
-  handle OGet [DInt k] (snd (handle OGet [DInt k] s)) = handle OGet [DInt k] s.
+  handle_kv OGet [DInt k] (snd (handle_kv OGet [DInt k] s)) = handle_kv OGet [DInt k] s.
 Proof. reflexivity. Qed.
 
 (** ** Hoare layer. A [Spec] is a precondition on the state and a postcondition relating
@@ -43,7 +43,8 @@ Record Spec : Type := {
 
 Definition verifies (t : tm) (sp : Spec) : Prop :=
   forall s, pre sp s ->
-    let '(x, s') := run [] DUnit t s in post sp s x s'.  (* KV programs don't OAsk; ctx fixed *)
+    (* run from a world whose KV map is [s]; the spec constrains the final map [w'.(kv)]. *)
+    let '(x, w') := run [] t (mkWorld s DUnit []) in post sp s x w'.(kv).
 
 (** The current integer counter at [k] (0 if absent or non-integer). *)
 Definition cur (k : Z) (s : state) : Z :=
@@ -64,7 +65,7 @@ Definition incr_spec (k : Z) : Spec := {|
 |}.
 
 (** Keep the map operations as opaque constants so [cbn] reduces only the interpreter
-    (run/eval_val/handle/...) and never unfolds FMapAVL internals. *)
+    (run/eval_val/handle_kv/...) and never unfolds FMapAVL internals. *)
 Opaque M.find M.add M.empty M.remove.
 
 (** ** The correctness theorem: [incr_at k] meets [incr_spec k] (fully proved, QED). *)
@@ -72,15 +73,15 @@ Theorem incr_correct : forall k, verifies (incr_at k) (incr_spec k).
 Proof.
   intros k s Hpre.
   unfold verifies, incr_at, incr_spec, cur in *.
-  cbn [pre post run eval_val handle map nth opt_to_dval] in Hpre |- *.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hpre |- *.
   destruct (M.find k s) as [d|] eqn:Hf.
   - (* present: pre forces d = DInt z; both write succ of the stored value *)
     destruct d as [| | z | | | |]; try contradiction;
-      cbn [run eval_val handle map nth opt_to_dval];
+      cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv];
       (split; [ rewrite find_add_same; reflexivity
               | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
   - (* absent: counter starts at 0, becomes 1 = Z.succ 0 *)
-    cbn [run eval_val handle map nth opt_to_dval];
+    cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv];
     (split; [ rewrite find_add_same; reflexivity
             | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
 Qed.
@@ -107,9 +108,9 @@ Proof.
   intro Hv. unfold verifies, incr_wrong, incr_spec, cur in Hv.
   specialize (Hv (M.empty dval)).
   (* From the empty store the precondition holds, so the postcondition must hold too. *)
-  cbn [pre post run eval_val handle map nth opt_to_dval] in Hv.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
   rewrite empty_o in Hv.
-  cbn [run eval_val handle map nth opt_to_dval] in Hv.
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
   specialize (Hv I).
   (* the wrong impl wrote 0, but the spec's value clause demands succ 0 = 1 *)
   destruct Hv as [Hval _].
@@ -131,10 +132,10 @@ Proof.
   intro Hv. unfold verifies, incr_clobber, incr_spec, cur in Hv.
   (* A store where the neighbour key 1 holds a value the clobber will wrongly delete. *)
   specialize (Hv (M.add 1 (DInt 5) (M.empty dval))).
-  cbn [pre post run eval_val handle map nth opt_to_dval] in Hv.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
   (* find 0 (add 1 5 empty) = None, so the precondition holds. *)
   rewrite add_neq_o in Hv by congruence. rewrite empty_o in Hv.
-  cbn [run eval_val handle map nth opt_to_dval] in Hv.
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
   specialize (Hv I).
   destruct Hv as [_ Hframe].
   (* the frame says key 1 is untouched, but the clobber deleted it *)

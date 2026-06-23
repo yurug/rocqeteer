@@ -55,6 +55,8 @@ echo "| Error (Throw) | effect | Rkv.Err | diff_err |"
 echo "| Runtime_Error_refines | assumption (tcb-assumption) | abort outcome+state | diff_err (3000) |"
 echo "| Env (Ask) | effect | Rkv.Env | diff_env |"
 echo "| Runtime_Env_refines | assumption (tcb-assumption) | read-only ctx flows | diff_env (3000) |"
+echo "| Trace (Emit) | effect | Rkv.Trace | diff_trace |"
+echo "| Runtime_Trace_refines | assumption (tcb-assumption) | event log in order | diff_trace (3000) |"
 echo
 echo "## Public effectful entrypoints"
 echo "- \`Generated.Prog0_generated.prog0\` under \`Rkv.Kv.run\`/\`run_checked\` (unhandled -> typed error, T8)."
