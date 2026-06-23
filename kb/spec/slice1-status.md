@@ -64,8 +64,10 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
   **hashes**. Slice 1 emits **one** `prog0_generated.ml` containing all programs; the effect declaration +
   curried wrappers + deep handler are **hand-written** in `runtime/kv.ml` (a reviewed realizer); there is **no
   hash header** — freshness is a **regenerate-and-`git diff`** gate (`ci/check_generated_fresh.sh`), not a
-  hash. The codegen consumes the extracted ADT directly (no hand-written mirror) and names binders by de
-  Bruijn depth (no global state).
+  hash. The codegen consumes the extracted ADT directly (no hand-written mirror), names binders by de
+  Bruijn depth (no global state), and **iterates a single-source program list** (`Samples.all_programs`,
+  defined in Rocq and extracted) — so adding a program is one edit in `Samples.v`, with no separate
+  codegen/extraction list (the tooling iteration).
 - **[[runtime-manifest]]** / **[[adr-0004-trust-model]]**: the refinement is a **documented manifest
   assumption** (`Runtime_KV_refines` in `docs/runtime_manifest.toml`), **not a Rocq `Axiom`** — so the Rocq
   development stays axiom-free. Manifest **rule 1** (codegen resolves prim/op names against the manifest) is

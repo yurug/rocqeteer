@@ -52,7 +52,7 @@ The five-effect MVP family is complete. Remaining breadth, in rough order:
 1. **Recursion in EffIR** (structural over lists/trees, or bounded/fuel loops) — the next fragment expansion
    (changes `effir.md`'s in-scope set; update [[slice1-status]]).
 2. **GADT witnesses** (typed encodings) and the **`data-encoding`-style codec pilot** (the realistic A3 target).
-3. Tooling: auto-generate the `Extract`/codegen/test program lists (hand-maintained in 3 places).
+3. ✅ Tooling: single-source program list (`Samples.all_programs`, extracted + iterated by codegen) — adding a program is one edit in `Samples.v`.
 4. Optional: Mode B (recognized monadic Gallina via MetaRocq) — only once it's packaged for Rocq 9.x.
 Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 

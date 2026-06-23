@@ -8,12 +8,13 @@
 (rocq.extraction
  (prelude Extr)
  (extracted_files
-  BinInt.ml BinInt.mli BinNums.ml BinNums.mli BinPos.ml BinPos.mli
+  Ascii.ml Ascii.mli BinInt.ml BinInt.mli BinNums.ml BinNums.mli BinPos.ml BinPos.mli
   Datatypes.ml Datatypes.mli EffIR.ml EffIR.mli FMapAVL.ml FMapAVL.mli
   FMapList.ml FMapList.mli Int.ml Int.mli ListDef.ml ListDef.mli
   List.ml List.mli Nat.ml Nat.mli OrderedTypeEx.ml OrderedTypeEx.mli
   OrderedType.ml OrderedType.mli Orders.ml Orders.mli OrdersTac.ml OrdersTac.mli
-  PosDef.ml PosDef.mli Samples.ml Samples.mli Specif.ml Specif.mli)
+  PosDef.ml PosDef.mli Samples.ml Samples.mli Specif.ml Specif.mli
+  String.ml String.mli)
  (theories Rocqeteer Stdlib))
 
 ; Extracted OCaml is machine-generated; silence its warnings (-w -a) but keep it a real
@@ -21,6 +22,6 @@
 (library
  (name ref_extracted)
  (modules
-  BinInt BinNums BinPos Datatypes EffIR FMapAVL FMapList Int
-  ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PosDef Samples Specif)
+  Ascii BinInt BinNums BinPos Datatypes EffIR FMapAVL FMapList Int
+  ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PosDef Samples Specif String)
  (flags (:standard -w -a)))

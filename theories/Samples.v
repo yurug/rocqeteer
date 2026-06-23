@@ -4,7 +4,7 @@
     test (audit finding 1) so those lowering rules are covered, not dead. All are slice-1
     typed (key = value = Z; values via VInt/VZero/VSucc). *)
 
-From Stdlib Require Import ZArith List.
+From Stdlib Require Import ZArith List String.
 From Rocqeteer Require Import EffIR.
 Import ListNotations.
 Local Open Scope Z_scope.
@@ -79,3 +79,21 @@ Definition sample_cache : tm :=
 (** RECURSION: increment key 0 five times via a bounded loop — exercises [Repeat]. After
     [n] iterations from empty, key 0 holds [n] (proven by induction in theories/Recur.v). *)
 Definition sample_count : tm := Repeat 5 (incr_at 0).
+
+(** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
+    [let name () = …] per entry), and extraction of it pulls every referenced sample as a
+    named value. Adding a program is THEN a one-line edit here — no separate codegen or
+    extraction list to keep in sync (kb/spec/codegen.md; tooling iteration). *)
+Definition all_programs : list (string * tm) :=
+  [ ("prog0"%string, prog0);
+    ("sample_delete"%string, sample_delete);
+    ("sample_two"%string, sample_two);
+    ("sample_ret"%string, sample_ret);
+    ("sample_neg"%string, sample_neg);
+    ("sample_nested"%string, sample_nested);
+    ("sample_throw"%string, sample_throw);
+    ("sample_guard5"%string, sample_guard5);
+    ("sample_env"%string, sample_env);
+    ("sample_trace"%string, sample_trace);
+    ("sample_cache"%string, sample_cache);
+    ("sample_count"%string, sample_count) ].

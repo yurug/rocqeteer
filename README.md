@@ -91,11 +91,11 @@ kb/           the knowledge base — specs, properties, decisions, runbooks (rea
 
 ## Adding a program
 
-Write a closed EffIR term in `theories/Samples.v` (slice-1 fragment: `Ret`/`Bind`/`Perform`/`MatchOpt`,
-values via `VInt`/`VZero`/`VSucc`), add it to the `Separate Extraction` list in `extraction/Extr.v`, the
-`programs` list in `codegen/codegen.ml`, and the `programs` list in `tests/diff_kv.ml`. It is then extracted,
-code-generated to direct-style OCaml, and differentially tested automatically. (Generating these lists is on
-the breadth roadmap.)
+Write a closed EffIR term in `theories/Samples.v` (fragment: `Ret`/`Bind`/`Perform`/`MatchOpt`/`Repeat`,
+values via `VInt`/`VZero`/`VSucc`) and add **one line** to `Samples.all_programs` there. That single list is
+the source of truth: extracting it pulls the sample as a named value, and `rocq-eff-codegen` iterates it, so
+the program is extracted and code-generated to direct-style OCaml automatically — no separate codegen or
+extraction list to keep in sync. (Add a differential test only if it exercises a new property.)
 
 ## Roadmap (post-slice)
 

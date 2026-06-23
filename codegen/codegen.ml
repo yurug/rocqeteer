@@ -78,26 +78,13 @@ let header =
   \   See kb/spec/codegen.md. *)\n\
    open Rkv\n"
 
-(* The programs to lower, each as one direct-style [name : unit -> _]. prog0 is the
-   slice example; the samples cover ODelete / Ret / multi-Perform / negative literal /
-   deep de Bruijn nesting so those lowering rules are differentially tested, not dead. *)
-let programs : (string * tm) list =
-  [ ("prog0", prog0);
-    ("sample_delete", Ref_extracted.Samples.sample_delete);
-    ("sample_two", Ref_extracted.Samples.sample_two);
-    ("sample_ret", Ref_extracted.Samples.sample_ret);
-    ("sample_neg", Ref_extracted.Samples.sample_neg);
-    ("sample_nested", Ref_extracted.Samples.sample_nested);
-    ("sample_throw", Ref_extracted.Samples.sample_throw);
-    ("sample_guard5", Ref_extracted.Samples.sample_guard5);
-    ("sample_env", Ref_extracted.Samples.sample_env);
-    ("sample_trace", Ref_extracted.Samples.sample_trace);
-    ("sample_cache", Ref_extracted.Samples.sample_cache);
-    ("sample_count", Ref_extracted.Samples.sample_count) ]
-
-(* Emit all programs to stdout (captured by the dune rule into generated/). *)
+(* Emit one direct-style [name () = …] per entry of the SINGLE-SOURCE program list
+   [Samples.all_programs] (defined in Rocq, extracted here): adding a program is a one-line
+   edit there, with no separate codegen/extraction list to keep in sync. *)
 let () =
   print_string header;
-  List.iter
-    (fun (name, t) -> Printf.printf "let %s () = %s\n" name (emit_tm [] t))
-    programs
+  Coqconv.list_of_coq Ref_extracted.Samples.all_programs
+  |> List.iter (fun pair ->
+         match pair with
+         | Ref_extracted.Datatypes.Coq_pair (cname, t) ->
+             Printf.printf "let %s () = %s\n" (Coqconv.string_of_coq cname) (emit_tm [] t))

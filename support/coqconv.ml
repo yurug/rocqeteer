@@ -48,3 +48,27 @@ let rec list_of_coq (l : 'a Datatypes.list) : 'a list =
   match l with
   | Datatypes.Coq_nil -> []
   | Datatypes.Coq_cons (x, tl) -> x :: list_of_coq tl
+
+(* Coq string/ascii (8 bits, LSB first) -> native OCaml string, for the program names in
+   Samples.all_programs (the single-source program list the codegen iterates). *)
+module Ascii = Ref_extracted.Ascii
+module Cstr = Ref_extracted.String
+
+let char_of_ascii (a : Ascii.ascii) : char =
+  match a with
+  | Ascii.Ascii (b0, b1, b2, b3, b4, b5, b6, b7) ->
+      let bit b i = if bool_of_coq b then 1 lsl i else 0 in
+      Char.chr
+        (bit b0 0 lor bit b1 1 lor bit b2 2 lor bit b3 3 lor bit b4 4 lor bit b5 5
+       lor bit b6 6 lor bit b7 7)
+
+let string_of_coq (s : Cstr.string) : string =
+  let buf = Buffer.create 16 in
+  let rec go = function
+    | Cstr.EmptyString -> ()
+    | Cstr.String (a, rest) ->
+        Buffer.add_char buf (char_of_ascii a);
+        go rest
+  in
+  go s;
+  Buffer.contents buf

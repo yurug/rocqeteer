@@ -1,9 +1,9 @@
 From Stdlib Require Import Extraction.
 From Rocqeteer Require Import EffIR Samples.
 Extraction Language OCaml.
+(* all_programs is the single source of truth: extracting it pulls every referenced sample
+   as a named value (so the tests can still use Samples.sample_X), and the codegen iterates
+   it. Plus the EffIR entry points the differential tests call. *)
 Separate Extraction
-  EffIR.prog0 EffIR.observe EffIR.observe_full EffIR.run
-  Samples.sample_delete Samples.sample_two Samples.sample_ret
-  Samples.sample_neg Samples.sample_nested
-  Samples.sample_throw Samples.sample_guard5
-  Samples.sample_env Samples.sample_trace Samples.sample_cache Samples.sample_count.
+  Samples.all_programs
+  EffIR.prog0 EffIR.observe EffIR.observe_full EffIR.run.
