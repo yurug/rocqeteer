@@ -75,3 +75,7 @@ Definition sample_cache : tm :=
           (Bind (Perform OCachePut [VInt 0; VSucc VZero])
                 (Perform OPut [VInt 1; VSucc VZero]))
           (Perform OPut [VInt 1; VVar 0])).
+
+(** RECURSION: increment key 0 five times via a bounded loop — exercises [Repeat]. After
+    [n] iterations from empty, key 0 holds [n] (proven by induction in theories/Recur.v). *)
+Definition sample_count : tm := Repeat 5 (incr_at 0).

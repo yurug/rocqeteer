@@ -13,3 +13,4 @@ let sample_guard5 () = (let v0 = (Kv.get (Z.of_string "5")) in (match v0 with No
 let sample_env () = (let v0 = (Env.ask ()) in (Kv.put (Z.of_string "1") v0))
 let sample_trace () = (let v0 = (Trace.emit (Z.of_string "10")) in (let v1 = (Kv.put (Z.of_string "1") (Z.succ Z.zero)) in (Trace.emit (Z.of_string "20"))))
 let sample_cache () = (let v0 = (Cache.get (Z.of_string "0")) in (match v0 with None -> (let v1 = (Cache.put (Z.of_string "0") (Z.succ Z.zero)) in (Kv.put (Z.of_string "1") (Z.succ Z.zero))) | Some v1 -> (Kv.put (Z.of_string "1") v1)))
+let sample_count () = (for _i = 1 to 5 do ignore ((let v0 = (Kv.get (Z.of_string "0")) in (match v0 with None -> (Kv.put (Z.of_string "0") (Z.succ Z.zero)) | Some v1 -> (Kv.put (Z.of_string "0") (Z.succ v1))))) done)

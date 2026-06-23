@@ -53,7 +53,8 @@ let programs : (string * E.tm * (unit -> unit)) list =
     ("sample_two", S.sample_two, fun () -> ignore (Gen.sample_two ()));
     ("sample_ret", S.sample_ret, fun () -> ignore (Gen.sample_ret ()));
     ("sample_neg", S.sample_neg, fun () -> ignore (Gen.sample_neg ()));
-    ("sample_nested", S.sample_nested, fun () -> ignore (Gen.sample_nested ())) ]
+    ("sample_nested", S.sample_nested, fun () -> ignore (Gen.sample_nested ()));
+    ("sample_count", S.sample_count, fun () -> ignore (Gen.sample_count ())) ]
 
 (* --- adversarial, seeded generators (bias toward the edge classes above) --- *)
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621

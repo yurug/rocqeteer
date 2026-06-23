@@ -36,6 +36,12 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
   invisibility is non-trivial) — axiom-free. `runtime/cache.ml` is a separate Hashtbl handler;
   `tests/diff_cache.ml` is metamorphic (reference == fast-miss == fast-hit, 3000 states). This completes
   the report's five-effect MVP family (State, Error, Env, Trace, Cache).
+- **Recursion** (breadth iteration 5): `tm` gains `Repeat n body` (a bounded loop = the report's
+  `for_i`/fuel recursion); `run` interprets it with a fuel-structural inner fixpoint; codegen lowers it to a
+  native `for` loop. `theories/Recur.v` proves the loop invariant **by induction** (`repeat_incr_present`)
+  and `sample_count_correct` (5 increments ⇒ key 0 = 5) — axiom-free; the first proof reasoning about
+  recursion. `sample_count` is in the KV adversarial harness (`diff_kv`, now 7 programs). This checks the
+  last MVP-acceptance box ("simple recursion").
 - **Error effect** (breadth iteration 1): `OThrow` aborts the computation; `theories/Error.v` proves the
   algebraic law `throw e ;; k = throw e`, a concrete abort (`sample_throw_aborts`), and a no-throw mutant —
   all axiom-free. `runtime/err.ml` is the native-exception backend (`throw`/`run_error`); `tests/diff_err.ml`

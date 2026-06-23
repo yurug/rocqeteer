@@ -62,7 +62,8 @@ Inductive tm : Type :=
 | Ret      : val -> tm
 | Bind     : tm -> tm -> tm
 | Perform  : op -> list val -> tm
-| MatchOpt : val -> tm -> tm -> tm.
+| MatchOpt : val -> tm -> tm -> tm
+| Repeat   : nat -> tm -> tm.   (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
 
 (** ** Pure-value evaluation in a de Bruijn environment. Total: out-of-scope vars and
     type errors yield [Dstuck]. *)
@@ -147,6 +148,18 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
       | DSome x => run (x :: env) some w
       | _       => (ORet Dstuck, w)
       end
+  | Repeat n body =>
+      (* run [body] [n] times, threading the world; an abort stops the loop. The inner
+         [loop] recurses on the fuel [m]; the calls to [run env body] are on a strict
+         subterm of [Repeat n body], so the outer fixpoint stays structurally guarded. *)
+      (fix loop (m : nat) (w0 : world) {struct m} : outcome * world :=
+         match m with
+         | O    => (ORet DUnit, w0)
+         | S m' => match run env body w0 with
+                   | (ORet _, w1) => loop m' w1
+                   | (OErr e, w1) => (OErr e, w1)
+                   end
+         end) n w
   end.
 
 (** Initial world: empty store, the given [c] context, empty trace, empty cache. *)
