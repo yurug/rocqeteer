@@ -99,10 +99,12 @@ extraction list to keep in sync. (Add a differential test only if it exercises a
 
 ## Roadmap (post-slice)
 
-The **`Error` effect** (`OThrow` + a native-exception backend, with the `throw e;;k = throw e` law proven
-and an outcome+state differential test) is **done** — the first breadth iteration. Next: `Env`/`Trace`/`Cache`,
-recursion, GADT witnesses, and a `data-encoding`-style verified binary codec pilot. The boundaries between
-built reality and the fuller design are recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
+**Done so far** (each proven axiom-free + differentially/property tested): the five-effect MVP family —
+**State, Error, Env, Trace, Cache** — composed; **bounded recursion** (`Repeat`, proven by induction); and a
+**typed binary codec pilot** with a *proven* round-trip (`theories/Codec.v`) and a GADT/`bytes` realizer with
+no unsafe casts. Still open: general `Match`/`VPrim` + an IR typechecker, generated effect/handler modules,
+abstract type realization, and (once packaged for Rocq 9.x) Mode B via MetaRocq. Built reality vs. the fuller
+design is recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
 
 ## License
 

@@ -42,6 +42,12 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
   and `sample_count_correct` (5 increments ⇒ key 0 = 5) — axiom-free; the first proof reasoning about
   recursion. `sample_count` is in the KV adversarial harness (`diff_kv`, now 7 programs). This checks the
   last MVP-acceptance box ("simple recursion").
+- **Codec pilot — GADT witnesses** (breadth iteration 6): the realistic A3 target. `theories/Codec.v`
+  defines a typed binary format (descriptors + typed values + encode/decode over a token stream) and PROVES
+  the round-trip `decode (encode v) = Some (v, [])` (P8) by induction, axiom-free, plus a wrong-decoder
+  mutant. `runtime/codec.ml` is the GADT `_ enc` realizer over real `bytes` with **no unsafe casts**;
+  malformed input -> `Error` (T9). `tests/codec_test.ml` property-tests round-trip on 5000 typed values
+  (reference-first trust, report §18.3). This satisfies the GADT-witness / Obj.magic-free MVP goal.
 - **Error effect** (breadth iteration 1): `OThrow` aborts the computation; `theories/Error.v` proves the
   algebraic law `throw e ;; k = throw e`, a concrete abort (`sample_throw_aborts`), and a no-throw mutant —
   all axiom-free. `runtime/err.ml` is the native-exception backend (`throw`/`run_error`); `tests/diff_err.ml`
@@ -81,8 +87,7 @@ why. When a `spec/` file and the code disagree, **this note governs for slice 1*
 
 ## Deferred to breadth (post-slice, by design)
 General `Match`/`VPrim` + `typecheck_ir.ml`; generated effects/handlers modules + hash headers; manifest-driven
-prim resolution; abstract `TNamed` realization; recursion; GADT witnesses;
-the codec pilot. (`Error`, `Env`, `Trace` are now built — see above.)
+prim resolution; abstract `TNamed` realization. (`Error`, `Env`, `Trace` are now built — see above.)
 
 ## Agent notes
 > Do not "fix" the code to match the aspirational spec clauses above — they are deliberately deferred. If you

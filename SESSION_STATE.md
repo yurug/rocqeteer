@@ -48,12 +48,23 @@ methodology. **Read `CLAUDE.md` and `kb/INDEX.md` first.**
   Trace, Cache), all composed, all axiom-free, all differentially tested. `make all` green.
 
 ## Exact next step
-The five-effect MVP family is complete. Remaining breadth, in rough order:
-1. **Recursion in EffIR** (structural over lists/trees, or bounded/fuel loops) — the next fragment expansion
-   (changes `effir.md`'s in-scope set; update [[slice1-status]]).
-2. **GADT witnesses** (typed encodings) and the **`data-encoding`-style codec pilot** (the realistic A3 target).
-3. ✅ Tooling: single-source program list (`Samples.all_programs`, extracted + iterated by codegen) — adding a program is one edit in `Samples.v`.
-4. Optional: Mode B (recognized monadic Gallina via MetaRocq) — only once it's packaged for Rocq 9.x.
+The five-effect MVP family, bounded recursion, and the GADT codec pilot are all done (iterations 1-6 below).
+`make all` green. Natural next options (none started):
+1. **General `Match`/`VPrim` + an IR typechecker** — the remaining EffIR fragment expansion (update [[effir]]
+   + [[slice1-status]] when done).
+2. **Generated effect/handler modules + hash-headed generated files** — close the codegen-vs-spec gap.
+3. **Abstract `TNamed` type realization** via the manifest (currently slice-1 uses concrete `Z`).
+4. **Mode B** (recognized monadic Gallina via MetaRocq) — blocked until MetaRocq is packaged for Rocq 9.x.
+
+## Breadth iterations (all committed, all `make all` green)
+- ✅ 1 `Error` (`OThrow`); ✅ 2 `Env` (`OAsk`); ✅ 3 `world` refactor + `Trace` (`OTrace`);
+  ✅ 4 `Cache` (`OCacheGet`/`OCachePut`, observationally invisible) — completes the five-effect MVP family.
+- ✅ 5 **Recursion** (`Repeat`, proven by induction; closes the MVP "simple recursion" box).
+- ✅ tooling: single-source `Samples.all_programs` (extracted + iterated by codegen).
+- ✅ 6 **Codec pilot** (GADT witnesses): proven round-trip in `theories/Codec.v` + GADT/`bytes` realizer
+  (no unsafe casts), property-tested. The realistic A3 target.
+
+Effects compose; every effect/feature is proven axiom-free in Rocq and differentially/property tested.
 Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 
 ## Open / deferred

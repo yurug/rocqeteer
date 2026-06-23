@@ -59,6 +59,7 @@ echo "| Trace (Emit) | effect | Rkv.Trace | diff_trace |"
 echo "| Runtime_Trace_refines | assumption (tcb-assumption) | event log in order | diff_trace (3000) |"
 echo "| Cache (CGet/CPut) | effect | Rkv.Cache | diff_cache |"
 echo "| Runtime_Cache_invisible | assumption (tcb-assumption) | hit == miss (invisible) | diff_cache (3000) |"
+echo "| Codec | typed-witness realizer (GADT, no casts) | Rkv.Codec | codec_test; proven in Codec.v |"
 echo
 echo "## Public effectful entrypoints"
 echo "- \`Generated.Prog0_generated.prog0\` under \`Rkv.Kv.run\`/\`run_checked\` (unhandled -> typed error, T8)."

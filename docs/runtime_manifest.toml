@@ -93,6 +93,14 @@ validated_by = ["diff_cache (3000 states; reference == fast-miss == fast-hit)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[realizer."Codec"]
+ocaml_module = "Rkv.Codec"
+kind         = "typed witness — GADT encoder/decoder over bytes; no unsafe casts"
+proven       = "theories/Codec.v: decode_encode / roundtrip (P8), axiom-free, for the reference token format"
+fast         = "GADT `_ enc` to/of bytes; malformed input -> Error (T9), never a crash"
+tests        = ["codec_test (5000 typed values; parse/print stability)"]
+owner        = "yann"
+
 # The refinement assumption is documented here (NOT declared as a Rocq Axiom), so the Rocq
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.
