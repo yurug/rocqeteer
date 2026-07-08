@@ -3,7 +3,7 @@ id: adr-0006-vertical-slice
 type: decision
 summary: No breadth is added until one example (KV) is green end-to-end through the full pipeline; this defends against scope exhaustion.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prd]
 refines: []
 related: [adr-0001-first-order-ast, prop-functional, runbook-build-validate]

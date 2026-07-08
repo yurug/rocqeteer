@@ -3,7 +3,7 @@ id: conv-testing-strategy
 type: procedure
 summary: The test pyramid — unit, golden, adversarial differential (reference vs fast), metamorphic, fault-injection — plus the anti-vacuity proof gates (inhabitance + mutation) and seed/corpus discipline.
 domain: conventions
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [reference-semantics, prop-functional, prop-edge-cases, adr-0005-anti-vacuity]
 refines: []
 related: [ext-qcheck, runtime-manifest, runbook-build-validate]

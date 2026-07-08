@@ -3,7 +3,7 @@ id: prop-edge-cases
 type: constraint
 summary: Boundary inputs T1–T10 the differential and fault-injection tests must cover — overflow neighborhoods, missing keys, empty/large state, hash collisions, unhandled effects, and serialization corner cases.
 domain: properties
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prop-functional, conv-testing-strategy]
 refines: []
 related: [error-taxonomy, conv-error-handling]

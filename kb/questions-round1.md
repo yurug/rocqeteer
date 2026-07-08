@@ -114,7 +114,7 @@ known-bad implementation and confirm the proof *fails*. Review checks theorem *s
 Default: build fails on any `Admitted`/`admit`/new `Axiom` without a review label; any `Obj.magic` outside
 the one approved witness module; any `Effect.perform` outside generated/runtime modules; any unregistered
 `Extract Constant`; any manually-edited generated file; any public entrypoint missing a differential test.
-A `tcb_report.md` is generated and diffed each build.
+A `docs/tcb_report.md` is generated and diffed each build.
 > Your answer:
 
 **D3. 🔴 Differential-test generator policy (fights failure #3: false assurance)?**

@@ -3,7 +3,7 @@ id: spec-index
 type: index
 summary: Routing table for Rocqeteer's specification files — the precise contracts for EffIR, effects, reference semantics, codegen, manifest, and errors.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, arch-overview]

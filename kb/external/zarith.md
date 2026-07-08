@@ -3,7 +3,7 @@ id: ext-zarith
 type: external
 summary: zarith 1.14 provides arbitrary-precision Z used as the default faithful value model on both the reference and fast sides; bounded int63 is an opt-in, separately-reviewed realizer with a checked or proven bound.
 domain: external
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [adr-0004-trust-model, runtime-manifest, prop-edge-cases]

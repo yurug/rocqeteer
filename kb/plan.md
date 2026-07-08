@@ -3,7 +3,7 @@ id: plan
 type: procedure
 summary: Three-step implementation plan for the KV vertical slice — bridge spike first (riskiest), then the proven incr, then the hardened adversarial differential slice — risk-ordered, each with its single biggest unknown, refined by the plan-simulation gate.
 domain: planning
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prd, arch-overview, effir, adr-0001-first-order-ast, adr-0002-extraction-bridge, adr-0006-vertical-slice]
 refines: []
 related: [reference-semantics, codegen, conv-testing-strategy, runbook-build-validate]
@@ -53,7 +53,7 @@ and the effect syntax compiles. Seven items resolved (full report: `reports/plan
    wrapper (`put : key -> value -> unit`); codegen lowers `Perform (KV,Put) [k;v]` through the wrapper.
 
 Process: prefer in-file `Fail Theorem`/`Fail Lemma` for the anti-vacuity mutant (machine-checked in `make
-rocq`). Steps 2-3 keep a **human checkpoint** (P6 statement review; `tcb_report.md` diff) — they do not
+rocq`). Steps 2-3 keep a **human checkpoint** (P6 statement review; `docs/tcb_report.md` diff) — they do not
 fully self-close in the Ralph loop.
 
 ---
@@ -105,7 +105,7 @@ ordering forces early.
 - **Anti-vacuity companions** ([[adr-0005-anti-vacuity]]): an inhabitance lemma `∃ s, pre s`, and an in-file
   `Fail Theorem` mutant — a wrong `incr'` (e.g. one that writes `value_zero`) for which `incr_spec` is
   **un**provable. [[conv-testing-strategy]]
-- `Print Assumptions incr_spec` captured into `tcb_report.md`.
+- `Print Assumptions incr_spec` captured into `docs/tcb_report.md`.
 
 **Observable progress:** `incr` has a machine-checked, demonstrably non-trivial spec.
 
@@ -129,12 +129,12 @@ discharge those once and reuse; if it does not tame them, reconsider the interpr
 - `runtime/`: checked entrypoint wrapper converting `Effect.Unhandled`/stray exceptions to typed results
   (T8). [[conv-error-handling]]
 - Register the `Runtime_KV_refines` axiom (naming `run_spec_KV`/`run_fast_KV`/`observable`) in the manifest +
-  `tcb_report.md` (review-labeled). [[adr-0004-trust-model]], [[runtime-manifest]]
+  `docs/tcb_report.md` (review-labeled). [[adr-0004-trust-model]], [[runtime-manifest]]
 - Differential test: QCheck generators **biased** toward T2 (missing key), T5 (duplicate `Put`), T4 (large
   state), T6 (collisions), T7 (order-independence) over random states/keys, with **logged coverage counts
   > 0** per class (Resolution 6); **seed logging**; counterexamples persisted to `tests/corpus/`. T1
   (overflow) is **N/A in slice 1**. Fault injection: unhandled effect -> typed error (T8). [[conv-testing-strategy]], [[ext-qcheck]], [[prop-edge-cases]]
-- Wire CI gates: no-`Bind` grep, generated-hash check, no-stray-`perform`, no-`Admitted`, `tcb_report.md`
+- Wire CI gates: no-`Bind` grep, generated-hash check, no-stray-`perform`, no-`Admitted`, `docs/tcb_report.md`
   diff, public-entrypoint-has-differential-test. [[error-taxonomy]], [[runbook-build-validate]]
 
 **Observable progress:** the full pipeline (`make rocq -> extract-ref -> gen-fast -> build-fast -> test ->
@@ -142,7 +142,7 @@ tcb-report`) runs green on adversarial inputs.
 
 **Acceptance (slice definition of done, [[runbook-build-validate]]):** generated `incr` is idiomatic
 direct-style (no `Bind`) · `build-fast` type-checks on 5.4.1 (P4) · KV differential green with **logged
-coverage > 0 for T2/T5/T6/T7** (T1 N/A — no `int63` in slice 1) (P5) · `tcb_report.md` lists
+coverage > 0 for T2/T5/T6/T7** (T1 N/A — no `int63` in slice 1) (P5) · `docs/tcb_report.md` lists
 `Runtime_KV_refines` + `value_succ` · CI gates active · "green end-to-end examples" counter = **1** ->
 breadth unlocked.
 
@@ -165,7 +165,7 @@ to easier modules while the step's named unknown is unresolved. Steps 2-3 includ
 
 ## Related files
 - `runbooks/build-and-validate.md` — the exact pipeline commands and gates each step targets.
-- `properties/functional.md` / `edge-cases.md` — the P/T ids in the acceptance criteria.
+- `properties/functional.md` / `properties/edge-cases.md` — the P/T ids in the acceptance criteria.
 - `reports/premortem-idea-20260620.md` — the failures this risk-ordering defends against (#1, #3, #5, #6).
 - `reports/plan-simulation-round1.md` — the gate findings these resolutions close.
 </content>

@@ -3,7 +3,7 @@ id: index
 type: index
 summary: Top-level routing for the Rocqeteer knowledge base — what the project is, how to read the KB, and quick-load bundles by goal.
 domain: meta
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [glossary, prd, arch-overview, idx-by-task]
@@ -43,9 +43,9 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 - `architecture/overview.md` + `decisions/` (6 ADRs) — pipeline, TCB layers, and the decisions behind them.
 - `spec/` (7 + index) — EffIR, effect signatures, reference semantics, codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
 - `properties/` (3 + index) — functional (proven, P1–P8), non-functional (measured, NF1–NF6), edge cases (T1–T10).
-- `external/` (4 + index) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
-- `conventions/` (3 + index) — code style, error handling, testing & proof hygiene.
-- `runbooks/` (2 + index) — build/validate pipeline, quality-audit checklist.
+- `external/` (`external/INDEX.md`) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
+- `conventions/` (`conventions/INDEX.md`) — code style, error handling, testing & proof hygiene.
+- `runbooks/` (`runbooks/INDEX.md`) — build/validate pipeline, quality-audit checklist.
 - `indexes/by-task.md` — task-oriented routing.
 - `reports/` — `premortem-idea-20260620.{md,html}`; future audit/quiz reports.
 - `questions-round1.md` — Phase-1 ambiguity resolution (answered: defaults accepted, NF = measure).

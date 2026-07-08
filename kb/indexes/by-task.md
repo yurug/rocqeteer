@@ -3,7 +3,7 @@ id: idx-by-task
 type: index
 summary: Task-oriented routing — given what you are about to do (implement / prove / build codegen / add a realizer / test / audit / debug), the ordered files to load and the key questions they answer.
 domain: meta
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, spec-index, prop-index]

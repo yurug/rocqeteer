@@ -3,7 +3,7 @@ id: conv-code-style
 type: procedure
 summary: Literate, test-driven, small-unit style for Rocq and OCaml — file headers, doc on every public definition, WHY comments on conditionals, DI, function/file size limits, deterministic formatting.
 domain: conventions
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [conv-error-handling, conv-testing-strategy, codegen]

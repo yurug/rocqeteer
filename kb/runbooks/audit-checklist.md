@@ -3,7 +3,7 @@ id: runbook-audit-checklist
 type: procedure
 summary: The multi-axis quality audit run after implementation — test gaps, security, performance, spec compliance, simplicity, provability, anti-vacuity, and TCB diff — each with what to check and where findings go.
 domain: runbooks
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prop-functional, prop-non-functional, conv-testing-strategy, adr-0004-trust-model]
 refines: []
 related: [runbook-build-validate, runtime-manifest]
@@ -22,7 +22,7 @@ After the pipeline is green, run one independent pass per axis (fresh perspectiv
 5. **Spec compliance** — for each `kb/spec/*` contract, does the code match? Code↔spec disagreement is a finding (fix one).
 6. **Simplicity** — could the same result be reached more directly? Any second program representation creeping in beside EffIR? (reject — premortem #1)
 7. **Provability** — for each change, which `kb/properties/*` entry explains why it is correct? If none, that is a gap.
-8. **TCB diff** — `tcb_report.md`: new axioms labeled? `Obj.magic` count 0 (or 1 reviewed)? unregistered `Extract Constant` = 0? LOC budgets (NF6)? every realizer has owner + tests?
+8. **TCB diff** — `docs/tcb_report.md`: new axioms labeled? `Obj.magic` count 0 (or 1 reviewed)? unregistered `Extract Constant` = 0? LOC budgets (NF6)? every realizer has owner + tests?
 
 ## Process
 - One fresh subagent per axis (independent perspective). Findings → `kb/reports/audit-<axis>-<date>.md`.

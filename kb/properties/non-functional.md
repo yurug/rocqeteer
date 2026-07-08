@@ -3,7 +3,7 @@ id: prop-non-functional
 type: constraint
 summary: Non-functional criteria NF1–NF6 are MEASURED with CI gates, never proven in v1 — covering no-free-monad-in-hot-path, allocation, determinism, latency regression, build reproducibility, and TCB-size budgets.
 domain: properties
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prd, adr-0004-trust-model]
 refines: []
 related: [prop-functional, conv-testing-strategy, runbook-build-validate]
@@ -39,7 +39,7 @@ match their headers. *Measure:* re-run-equality + hash check in CI. *Gate:* mism
 ### NF6 — TCB size budget (engineering control, not a guarantee)
 *Criterion:* codegen core ≤3000 LOC; runtime core ≤2000 LOC; each primitive module ≤500 LOC unless
 separately reviewed; `Obj.magic` uses 0 by default (≤1 reviewed witness module); unregistered `Extract
-Constant` = 0; C stubs = 0 in MVP. *Measure:* `tcb_report.md` line counts + grep. *Gate:* over-budget
+Constant` = 0; C stubs = 0 in MVP. *Measure:* `docs/tcb_report.md` line counts + grep. *Gate:* over-budget
 requires an explicit review label.
 
 ## Agent notes

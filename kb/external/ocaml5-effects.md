@@ -3,7 +3,7 @@ id: ext-ocaml5-effects
 type: external
 summary: OCaml 5.4 effect handlers are efficient but dynamically checked — continuations are one-shot, unhandled effects raise at runtime, deep handlers reinstall across continue, and the match-with-effect sugar needs 5.3+; these constraints shape the source fragment and the checked entrypoint wrapper.
 domain: external
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [effect-signatures, codegen, conv-error-handling, error-taxonomy]

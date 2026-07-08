@@ -3,7 +3,7 @@ id: ext-rocq-extraction
 type: external
 summary: Rocq 9.1's extraction plugin erases logical content and prints fairly direct ML; it copies Extract Constant code as unchecked strings, may insert Obj.magic (no GADTs generated), and does not improve algorithmic complexity — constraints that shape ADR-0002/0003/0004.
 domain: external
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [adr-0002-extraction-bridge, adr-0003-dependency-budget, adr-0004-trust-model, codegen]
@@ -44,7 +44,7 @@ Extraction is a build-time, one-shot operation (no API rate limit). The risk is 
 - **Verified shape:** extraction is `Obj.magic`-free but **renamed and multi-module** — `val -> coq_val`,
   `Z -> coq_Z`, Peano `nat`, inductive `string`/`ascii`, across files `EffIR`/`BinNums`/`Datatypes`/…. The
   `codegen/eff_ir.ml` mirror reflects that real shape, and the sync check is a **`.mli` diff**, not a grep.
-- `Print Assumptions <thm>` output is captured into `tcb_report.md` for every example theorem.
+- `Print Assumptions <thm>` output is captured into `docs/tcb_report.md` for every example theorem.
 
 ## Agent notes
 > Two failure traps from the premortem live here: (1) trusting an `Extract Constant` string — never, it is

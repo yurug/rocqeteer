@@ -3,7 +3,7 @@ id: runbook-index
 type: index
 summary: Routing table for Rocqeteer runbooks — the build/validate pipeline and the quality-audit checklist.
 domain: runbooks
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index]

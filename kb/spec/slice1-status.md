@@ -3,7 +3,7 @@ id: slice1-status
 type: spec
 summary: What slice 1 actually implements vs. the (aspirational) spec files — the authoritative record of divergences after Phase 4-5, so a reader is never misled by a spec describing unbuilt machinery.
 domain: spec
-last-updated: 2026-06-21
+last-updated: 2026-07-08
 depends-on: [effir, codegen, runtime-manifest, error-taxonomy, adr-0004-trust-model]
 refines: []
 related: [plan, prop-functional]

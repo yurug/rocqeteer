@@ -3,7 +3,7 @@ id: glossary
 type: glossary
 summary: Canonical names and one-line definitions for every Rocqeteer domain term; the controlled vocabulary for KB tags.
 domain: meta
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, prd, arch-overview]
@@ -27,7 +27,7 @@ Canonical vocabulary. Every KB file's `tags` and prose draw from these terms; us
 - **Runtime manifest** — machine-readable registry of every realizer (Rocq name → OCaml symbol, purity, pre/post, tests, owner). The audit surface for trust. See [[runtime-manifest]].
 - **Refinement axiom** — an *unproven* Rocq `Axiom` asserting the OCaml runtime observably refines the reference semantics. Explicitly listed in the TCB report; validated only by differential tests. See [[adr-0004-trust-model]].
 - **TCB (Trusted Computing Base)** — everything that must be correct for results to hold. Split into proof-TCB, extraction/runtime-TCB, system-TCB. See [[arch-overview]].
-- **TCB report** — generated `tcb_report.md` listing Rocq/OCaml versions, axioms (`Print Assumptions`), `Obj.magic` uses, `Extract Constant`s, entrypoints. Diffed in CI.
+- **TCB report** — generated `docs/tcb_report.md` listing Rocq/OCaml versions, axioms (`Print Assumptions`), `Obj.magic` uses, `Extract Constant`s, entrypoints. Diffed in CI.
 - **Differential testing** — running reference vs fast on the same generated inputs and asserting normalized-equal outputs. The primary check on the refinement axiom. See [[conv-testing-strategy]].
 - **Anti-vacuity discipline** — proof hygiene that prevents trivially-true specs: an **inhabitance lemma** (`∃ s, pre s`) per Hoare spec plus a **proof-mutation test** (a deliberately-wrong impl must break the proof). See [[adr-0005-anti-vacuity]].
 - **Hoare spec** — a `{ pre; post }` record over a state and result; `verifies p spec` means running `p` from any `pre` state lands in `post`. See [[reference-semantics]].

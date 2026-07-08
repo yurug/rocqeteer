@@ -3,7 +3,7 @@ id: prop-index
 type: index
 summary: Routing table for Rocqeteer's properties — proven functional invariants (P), measured non-functional criteria (NF), and adversarial edge cases (T).
 domain: properties
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, prop-functional, prop-non-functional, prop-edge-cases]
@@ -25,7 +25,7 @@ related: [index, prop-functional, prop-non-functional, prop-edge-cases]
 - P3/P4/NF1/NF5 → CI-grep + `dune build` + golden/hash checks.
 - P1/P2/P6/P7/P8 → Rocq proofs (+ inhabitance + mutation for P6).
 - P5 + T1–T10 → adversarial differential tests + corpus replay.
-- NF2/NF3/NF4/NF6 → benchmarks, determinism checks, `tcb_report.md` budgets.
+- NF2/NF3/NF4/NF6 → benchmarks, determinism checks, `docs/tcb_report.md` budgets.
 
 ## Related files
 - `../INDEX.md` — top-level routing and quick-load bundles.

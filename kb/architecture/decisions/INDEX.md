@@ -3,7 +3,7 @@ id: adr-index
 type: index
 summary: Routing table for the six architecture decision records, each tracing to a premortem failure mode it defends against.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, arch-overview]

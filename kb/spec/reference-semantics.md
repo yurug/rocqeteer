@@ -3,7 +3,7 @@ id: reference-semantics
 type: spec
 summary: The reference semantics is a pure, total Rocq interpreter of EffIR tm against a pure handler; it is the proof target and the differential-test oracle, and carries the Hoare/verifies layer.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [effir, effect-signatures]
 refines: []
 related: [codegen, conv-testing-strategy, adr-0004-trust-model, adr-0005-anti-vacuity]

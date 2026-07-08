@@ -3,7 +3,7 @@ id: runtime-manifest
 type: spec
 summary: The runtime manifest is the machine-readable registry mapping every Rocq realizer and refinement axiom to an OCaml symbol with purity, contract, tests, and owner; it is the audit surface of the runtime TCB.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [codegen, adr-0004-trust-model]
 refines: []
 related: [error-taxonomy, conv-testing-strategy, runbook-audit-checklist]
@@ -50,7 +50,7 @@ owner        = "yann"
 
 ## Validity rules (CI-enforced)
 1. Every `VPrim`/`Perform` op named in generated code resolves to a manifest entry, else codegen fails.
-2. Every `axiom.*` entry appears in `tcb_report.md`; a new axiom without `review_label` fails CI ([[adr-0004-trust-model]]).
+2. Every `axiom.*` entry appears in `docs/tcb_report.md`; a new axiom without `review_label` fails CI ([[adr-0004-trust-model]]).
 3. Every entry has ≥1 test and an owner ("every runtime primitive must have an owner" — report maxim 10).
 4. `purity = "pure"` realizers must have a faithful Rocq reference model used by the differential oracle.
 5. `int63`/bounded realizers must declare a *proven or dynamically-checked* bound (no silent wraparound — C4).

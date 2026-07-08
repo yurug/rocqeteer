@@ -3,7 +3,7 @@ id: adr-0004-trust-model
 type: decision
 summary: Functional correctness is proven against a reference model under explicit named refinement axioms; non-functional properties are measured, not proven; the certified claim is always qualified.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [arch-overview, prd]
 refines: []
 related: [reference-semantics, runtime-manifest, conv-testing-strategy, prop-non-functional, adr-0005-anti-vacuity]
@@ -42,7 +42,7 @@ performance.
   testing and per-realizer contracts/tests are load-bearing, not optional.
 
 ## What this means for implementers
-- Every refinement axiom is registered in `runtime_manifest` and surfaced in `tcb_report.md`; a new axiom
+- Every refinement axiom is registered in `runtime_manifest` and surfaced in `docs/tcb_report.md`; a new axiom
   fails CI without a review label. [[runtime-manifest]]
 - Differential generators must hit integer extremes, overflow neighborhoods, collisions, empty/large inputs;
   uniform-random-only is disallowed for trusted entrypoints. Store every divergence as a corpus entry. (D3)

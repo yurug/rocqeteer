@@ -3,7 +3,7 @@ id: adr-0003-dependency-budget
 type: decision
 summary: v1 depends only on rocq-stdlib, qcheck, and zarith; ITree, MetaRocq, ext-lib, equations, and malfunction are excluded as MVP blockers.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [arch-overview]
 refines: []
 related: [adr-0001-first-order-ast, ext-rocq-extraction, ext-qcheck, ext-zarith]

@@ -3,7 +3,7 @@ id: ext-index
 type: index
 summary: Routing table for external-dependency behavior — Rocq extraction, OCaml 5 effects, QCheck, zarith — the four pillars of the v1 dependency budget.
 domain: external
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index, adr-0003-dependency-budget]

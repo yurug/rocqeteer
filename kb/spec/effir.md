@@ -3,7 +3,7 @@ id: effir
 type: spec
 summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v1 grammar, typing, and what is in and out of scope.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [adr-0001-first-order-ast, effect-signatures]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy]

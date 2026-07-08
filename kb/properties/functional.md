@@ -3,7 +3,7 @@ id: prop-functional
 type: constraint
 summary: The functional invariants P1–P8 Rocqeteer must establish — monad/effect laws, interpreter determinism, structure-erasure in codegen, reference/fast refinement, and the codec round-trip — each with violation example, why, and test/proof strategy.
 domain: properties
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [reference-semantics, codegen, effir]
 refines: []
 related: [prop-non-functional, prop-edge-cases, adr-0004-trust-model, adr-0005-anti-vacuity]

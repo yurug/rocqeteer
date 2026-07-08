@@ -3,7 +3,7 @@ id: prd
 type: spec
 summary: Rocqeteer is a domain-independent trusted toolchain to write effectful programs in Rocq, prove them against reference semantics, and run them as fast idiomatic OCaml 5 with a small explicit TCB.
 domain: product
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [glossary]
 refines: []
 related: [arch-overview, prop-functional, prop-non-functional, adr-0004-trust-model, adr-0006-vertical-slice]
@@ -65,7 +65,7 @@ Primary user: a verification engineer who wants certified-yet-fast components.
 5. Codegen emits direct-style OCaml (no `Bind` constructors / free-monad interpreter in output).
 6. Generated OCaml + handlers compile under OCaml 5.4.1.
 7. Reference and fast pass boundary-biased differential tests. [[conv-testing-strategy]]
-8. `tcb_report.md` generated and diffed in CI; `Obj.magic` absent or isolated to one reviewed module.
+8. `docs/tcb_report.md` generated and diffed in CI; `Obj.magic` absent or isolated to one reviewed module.
 9. No unregistered `Extract Constant`; public entrypoints catch unhandled effects.
 
 ## Agent notes

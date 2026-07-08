@@ -3,7 +3,7 @@ id: adr-0002-extraction-bridge
 type: decision
 summary: EffIR crosses from Rocq to the codegen via Rocq extraction to an OCaml ADT consumed in-process; no JSON/serialization layer in the trusted path for v1.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [adr-0001-first-order-ast]
 refines: []
 related: [effir, codegen, ext-rocq-extraction, adr-0004-trust-model]

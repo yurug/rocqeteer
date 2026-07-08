@@ -3,7 +3,7 @@ id: error-taxonomy
 type: spec
 summary: Enumerates every error class — codegen-time rejections, runtime errors, and CI/TCB build-failure conditions — with when each fires and what the user sees.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [codegen, runtime-manifest]
 refines: []
 related: [conv-error-handling, ext-ocaml5-effects, runbook-build-validate]
@@ -41,7 +41,7 @@ A failed codegen always beats a clever unsound one (report §7.5).
 Build fails on: unregistered primitive; new `Axiom` without a review label; `Obj.magic` outside the one
 approved witness module; `Effect.perform` outside generated/runtime modules; `external` C declaration not
 registered; manually-edited generated file (hash mismatch); public entrypoint missing a differential test;
-`Admitted`/`admit` present. The `tcb_report.md` diff is itself a gate.
+`Admitted`/`admit` present. The `docs/tcb_report.md` diff is itself a gate.
 
 ## Agent notes
 > The taxonomy is a *trust* device, not just UX: each codegen-time rejection and each CI condition exists to

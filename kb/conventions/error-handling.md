@@ -3,7 +3,7 @@ id: conv-error-handling
 type: procedure
 summary: Errors come only from a typed ErrorE effect or local control; the exception backend hides behind a checked runner, public entrypoints convert Effect.Unhandled and stray exceptions to typed results, and no arbitrary exceptions appear in generated code.
 domain: conventions
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [error-taxonomy, ext-ocaml5-effects]
 refines: []
 related: [codegen, runtime-manifest]

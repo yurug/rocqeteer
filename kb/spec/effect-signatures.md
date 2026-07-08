@@ -3,7 +3,7 @@ id: effect-signatures
 type: spec
 summary: An effect signature is a type-indexed family of operations declared in Rocq, mirrored 1:1 by an OCaml extensible-effect declaration; KV is the slice-1 signature, and effects compose by explicit sum.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [effir]
 refines: []
 related: [reference-semantics, codegen, ext-ocaml5-effects]

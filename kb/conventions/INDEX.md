@@ -3,7 +3,7 @@ id: conv-index
 type: index
 summary: Routing table for Rocqeteer coding/testing conventions — code style, error handling, and the testing+proof-hygiene strategy.
 domain: conventions
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [index]
@@ -22,5 +22,5 @@ related: [index]
 
 ## Related files
 - `../INDEX.md` — top-level routing.
-- `../architecture/decisions/adr-0004-trust-model.md` / `adr-0005-anti-vacuity.md` — the decisions these enact.
+- `../architecture/decisions/adr-0004-trust-model.md` / `../architecture/decisions/adr-0005-anti-vacuity.md` — the decisions these enact.
 </content>

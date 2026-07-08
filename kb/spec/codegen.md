@@ -3,7 +3,7 @@ id: codegen
 type: spec
 summary: rocq-eff-codegen lowers an extracted EffIR value to direct-style OCaml 5 by erasing the monad (Bind→let, Perform→effect call, Match→match), emitting effect declarations, deep handlers, and an .mli, with deterministic formatting and loud failure on unsupported constructs.
 domain: spec
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [effir, effect-signatures, adr-0002-extraction-bridge]
 related: [reference-semantics, runtime-manifest, error-taxonomy, ext-ocaml5-effects]
 refines: []

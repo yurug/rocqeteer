@@ -3,7 +3,7 @@ id: adr-0005-anti-vacuity
 type: decision
 summary: Every Hoare spec ships an inhabitance lemma and a proof-mutation test so that a compiling proof cannot be a vacuously-true one.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [adr-0004-trust-model]
 refines: []
 related: [reference-semantics, conv-testing-strategy, prop-functional, runbook-audit-checklist]

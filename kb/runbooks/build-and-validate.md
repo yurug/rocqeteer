@@ -3,7 +3,7 @@ id: runbook-build-validate
 type: procedure
 summary: The end-to-end pipeline commands and CI gates — build Rocq, extract reference+EffIR, run codegen, build fast OCaml, run differential tests, generate and diff the TCB report.
 domain: runbooks
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [arch-overview, codegen, conv-testing-strategy]
 refines: []
 related: [runbook-audit-checklist, error-taxonomy, prop-non-functional]
@@ -43,7 +43,7 @@ make bench-smoke    # NF4 latency smoke: fail PR on >10% regression vs baseline
 ## Hard-fail conditions (CI — [[error-taxonomy]] §3)
 Unregistered primitive · new `Axiom` without `tcb-axiom` label · `Obj.magic` outside the witness module ·
 `Effect.perform` outside generated/runtime · unregistered `external` C decl · manually-edited generated file
-(hash mismatch) · public entrypoint without a differential test · any `Admitted`/`admit` · `tcb_report.md`
+(hash mismatch) · public entrypoint without a differential test · any `Admitted`/`admit` · `docs/tcb_report.md`
 diff unreviewed.
 
 ## Slice-1 definition of done (gate to "breadth allowed" — [[adr-0006-vertical-slice]])

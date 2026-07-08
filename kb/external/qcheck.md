@@ -3,7 +3,7 @@ id: ext-qcheck
 type: external
 summary: QCheck 0.91 (qcheck-core) provides seedable random generators, shrinking, and a test runner; we use it for the adversarial differential tests with explicit seeds and a failing-input corpus.
 domain: external
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: []
 refines: []
 related: [conv-testing-strategy, prop-functional, prop-edge-cases]

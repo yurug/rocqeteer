@@ -1,7 +1,7 @@
 # Rocqeteer pipeline (kb/runbooks/build-and-validate.md).
 # Targets mirror the runbook; each gates the next.
 
-.PHONY: all smoke rocq gen-fast build-fast test tcb-report ci-checks demo clean
+.PHONY: all smoke rocq gen-fast build-fast test tcb-report ci-checks kb-lint demo clean
 
 all: smoke rocq gen-fast build-fast test tcb-report ci-checks ## full pipeline
 
@@ -31,6 +31,10 @@ ci-checks: build-fast test ## TCB / forbidden-API gates (require the differentia
 	./ci/check_no_admitted.sh
 	./ci/check_generated_fresh.sh
 	./ci/check_tcb.sh
+	./ci/check_kb_lint.sh
+
+kb-lint: ## mechanical KB validation (kb-lint.py, strict)
+	./ci/check_kb_lint.sh
 
 demo: ## end-to-end narrated demo (audited counter) + HTML report
 	dune build demo/demo.exe

@@ -3,7 +3,7 @@ id: adr-0001-first-order-ast
 type: decision
 summary: EffIR is one first-order, explicit-binder AST shared by the reference interpreter and the codegen; HOAS Prog is rejected.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [arch-overview]
 refines: []
 related: [effir, adr-0002-extraction-bridge, adr-0003-dependency-budget]

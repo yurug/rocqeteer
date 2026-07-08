@@ -3,7 +3,7 @@ id: arch-overview
 type: concept
 summary: Rocqeteer's pipeline (EffIR → reference interpreter + codegen → OCaml), module structure, dependency graph, and three-layer TCB model.
 domain: architecture
-last-updated: 2026-06-20
+last-updated: 2026-07-08
 depends-on: [prd, glossary]
 refines: []
 related: [effir, reference-semantics, codegen, runtime-manifest, adr-0001-first-order-ast, adr-0002-extraction-bridge, adr-0004-trust-model]
