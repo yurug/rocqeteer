@@ -12,7 +12,7 @@
  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:16px 0}
  .card h2{font-size:17px;margin:0 0 10px;color:var(--acc)}
  .step{display:inline-flex;width:24px;height:24px;border-radius:7px;align-items:center;justify-content:center;background:#0c1120;border:1px solid var(--line);color:var(--acc);font-weight:700;margin-right:8px}
- pre{background:#0c1120;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfe0ff}
+ pre{background:#0c1120;border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#cfe0ff;white-space:pre-wrap;word-break:break-word}
  .kv{font:14px ui-monospace,monospace;color:var(--hi)}
  .ok{color:var(--ok)} .bad{color:var(--bad)} .mut{color:var(--mut)}
  table{border-collapse:collapse;width:100%;font-size:13.5px} td,th{border:1px solid var(--line);padding:7px 10px;text-align:left} th{color:var(--mut);font-weight:600}
@@ -55,8 +55,24 @@ Proof. vm_compute. repeat split. Qed.</pre>
 
  <div class="card"><h2><span class="step">2</span>Code-generated to idiomatic OCaml 5</h2>
   <p class="mut">Direct style — the monad is erased; no interpreter, just effect calls and a native for-loop:</p>
-  <pre>let demo_prog () = (let v0 = (Env.ask ()) in (let v1 = (Trace.emit v0) in (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Z.of_string "0")) in (match v2 with None -&gt; (Kv.put (Z.of_string "0") (Z.succ Z.zero)) | Some v3 -&gt; (Kv.put (Z.of_string "0") (Z.succ v3))))) done) in (Kv.put (Z.of_string "9") v0))))
+  <pre>let demo_prog () = (let v0 = (Env.ask ()) in
+  (let v1 = (Trace.emit v0) in
+  (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Z.of_string "0")) in
+  (match v2 with
+     | None -&gt; (Kv.put (Z.of_string "0") (Z.succ Z.zero))
+     | Some v3 -&gt; (Kv.put (Z.of_string "0") (Z.succ v3))))) done) in
+  (Kv.put (Z.of_string "9") v0))))
 </pre>
+  <p class="mut"><b>Where are the effects?</b> <code>Env.ask</code> / <code>Trace.emit</code> /
+  <code>Kv.put</code> <i>are</i> the effect operations: each is a thin wrapper whose body is an
+  <code>Effect.perform</code>, deliberately confined to <code>runtime/</code> (a CI gate forbids
+  <code>Effect.perform</code> anywhere else, and the <code>.mli</code>s hide the effect constructors).
+  Generated code therefore reads like ordinary OCaml while the effect boundary stays narrow and reviewed:</p>
+  <pre>(* runtime/env.ml *)   let ask () = Effect.perform Ask
+(* runtime/trace.ml *) let emit v = Effect.perform (Emit v)
+(* runtime/kv.ml *)    let put k v = Effect.perform (Put (k, v))
+(* ...interpreted by Effect.Deep handlers, e.g. runtime/kv.ml: *)
+(*   | effect Put (k, v), kont -&gt; T.replace table k v; continue kont () *)</pre>
  </div>
 
  <div class="card"><h2><span class="step">3</span>Run under the native handler stack</h2>

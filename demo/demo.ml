@@ -83,7 +83,27 @@ let codec_demo () : string * (int * int) =
 let rocq_src = block "theories/Samples.v" ~from_:"Definition demo_prog" ~until:"VVar 2]))).\n"
 let rocq_src = if String.length rocq_src > 400 then block "theories/Samples.v" ~from_:"Definition demo_prog :" ~until:")))." else rocq_src
 let theorem = block "theories/Demo.v" ~from_:"Theorem demo_correct" ~until:"Qed."
-let gen_code = block "generated/prog0_generated.ml" ~from_:"let demo_prog ()" ~until:"done))"
+
+(* The codegen emits each program on ONE line (deterministic, diff-friendly). For display,
+   break the line at let-bindings and match arms so a human can actually read it. *)
+let pretty (s : string) : string =
+  s
+  |> Str.global_replace (Str.regexp_string ") in (") ") in\n  ("
+  |> Str.global_replace (Str.regexp_string " with None -> ") " with\n     | None -> "
+  |> Str.global_replace (Str.regexp_string " | Some ") "\n     | Some "
+
+let gen_code = pretty (block "generated/prog0_generated.ml" ~from_:"let demo_prog ()" ~until:"done))")
+
+(* Where the effects actually live: the generated code calls curried wrappers whose bodies
+   perform the effects — Effect.perform is CONFINED to runtime/ (a CI gate), so effectful
+   code reads like ordinary OCaml while the effect boundary stays reviewed and narrow. *)
+let wrapper_code =
+  String.concat "\n"
+    [ "(* runtime/env.ml *)   let ask () = Effect.perform Ask";
+      "(* runtime/trace.ml *) let emit v = Effect.perform (Emit v)";
+      "(* runtime/kv.ml *)    let put k v = Effect.perform (Put (k, v))";
+      "(* ...interpreted by Effect.Deep handlers, e.g. runtime/kv.ml: *)";
+      "(*   | effect Put (k, v), kont -> T.replace table k v; continue kont () *)" ]
 
 let () =
   let rkv, rtr = reference () in
@@ -110,6 +130,9 @@ let () =
   step 2 "Code-generated to idiomatic OCaml 5  (generated/prog0_generated.ml)";
   print_endline (dim "  direct style — no monad, no interpreter, just effect calls + a for-loop:");
   print_endline (indent gen_code);
+  print_endline (dim "  where are the effects? Env.ask / Trace.emit / Kv.put ARE the effect operations —");
+  print_endline (dim "  each is a thin wrapper whose body performs the effect, confined to runtime/ (CI gate):");
+  print_endline (indent wrapper_code);
 
   step 3 "RUN under the native handler stack  (Env ∘ Trace ∘ KV)";
   Printf.printf "  context (audit tag) = %s\n" (yellow (string_of_int tag));
@@ -133,5 +156,6 @@ let () =
   print_endline (Printf.sprintf "\n  %s  wrote %s\n" (green "→") (bold "demo/demo_report.html"));
 
   (* --- HTML report --- *)
-  Demo_html.write ~tag ~rocq_src ~theorem ~gen_code ~rkv ~rtr ~fkv ~ftr ~agree ~hex ~decoded ~roundtrip_ok;
+  Demo_html.write ~tag ~rocq_src ~theorem ~gen_code ~wrapper_code ~rkv ~rtr ~fkv ~ftr ~agree ~hex ~decoded
+    ~roundtrip_ok;
   if not (agree && roundtrip_ok) then exit 1
