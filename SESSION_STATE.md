@@ -91,6 +91,9 @@ opt_to_dval); emit_key separate from emit_val (keys stay Z.t); check_generated_f
 vs build artifact (same CI intent, no mid-dev chicken-and-egg). R1 VBYTES DONE (2026-07-10, 4bdc26b): DBytes/VBytes through
 every layer; BytesVal.v proven axiom-free (+inhabitance+mutation); diff_bytes adversarial suite (NUL/CRLF/
 high-bytes/large classes); Runtime_Bytes_refines in the manifest; 8 proofs closed; make all+demo green.
-Next milestones (order): R2 general Match (DESIGN FIRST — pattern representation changes tm, breaks
-tm-inducting proofs; judgment-tier ADR before implementation), R3 VPrim (int64 checked arith + bytes ops +
-strict parse/print — verdis Q-INT-PARSE semantics), R7 reply ADT — then verdis step 2 (proven RESP2 codec).
+R2 GENERAL MATCH DONE (2026-07-10): ADR-0008 designed then implemented —
+pat (literals + PNone/PSome/PPair), first-match-wins + mandatory default, MatchOpt removed, 9 sites
+migrated, Dispatch.v (6 theorems incl. duplicate-branch first-match-wins observability), chained codegen,
+diff_dispatch suite. 14 proofs closed; make all + demo green.
+Next milestones: R3 VPrim (int64 checked arith with overflow signal + bytes ops + STRICT int64<->bytes
+parse/print matching verdis Q-INT-PARSE/Q-INT-OVER quirks), R7 reply ADT — then verdis step 2.
