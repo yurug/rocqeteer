@@ -93,6 +93,23 @@ validated_by = ["diff_cache (3000 states; reference == fast-miss == fast-hit)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[primitive."value_bytes"]
+ocaml_symbol = "Rval.Bytes (Bytes.of_string ...)"
+purity       = "pure"
+raises       = []
+pre          = "true"
+post         = "result = DBytes bs (reference: VBytes bs -> DBytes bs)"
+tests        = ["diff_bytes"]
+owner        = "yann"
+
+[assumption."Runtime_Bytes_refines"]
+statement    = "for all byte payloads, Rval.Bytes (ascii_list_to_bytes bs) = rval_of_dval (DBytes bs)"
+reference    = "EffIR.DBytes (list ascii) — ascii_list_to_bytes bridges to native bytes"
+fast         = "Rval.Bytes of bytes; codegen emits \\xNN-escaped Bytes.of_string literals"
+validated_by = ["diff_bytes (3000 states; B1-B7 byte classes: empty, NUL, CRLF, high, escape, large, mixed)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 [realizer."Codec"]
 ocaml_module = "Rkv.Codec"
 kind         = "typed witness — GADT encoder/decoder over bytes; no unsafe casts"

@@ -6,6 +6,13 @@ val bool_of_coq : Ref_extracted.Datatypes.bool -> bool
 val int_of_nat : Ref_extracted.Datatypes.nat -> int
 val list_of_coq : 'a Ref_extracted.Datatypes.list -> 'a list
 val string_of_coq : Ref_extracted.String.string -> string
+val char_of_ascii : Ref_extracted.Ascii.ascii -> char
+
+(** Convert a Coq [list ascii] (extracted [DBytes] payload) to native [bytes]. *)
+val ascii_list_to_bytes : Ref_extracted.Ascii.ascii Ref_extracted.Datatypes.list -> bytes
+
+(** Convert native [bytes] back to a Coq [list ascii] (for [dval_of_rval]). *)
+val bytes_to_ascii_list : bytes -> Ref_extracted.Ascii.ascii Ref_extracted.Datatypes.list
 
 (** Convert an extracted [dval] to the native [Rkv.Rval.t].  Total for all current
     constructors; [Dstuck] raises [Rkv.Rval.Stuck] since it is never produced for

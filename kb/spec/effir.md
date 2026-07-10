@@ -3,7 +3,7 @@ id: effir
 type: spec
 summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v1 grammar, typing, and what is in and out of scope.
 domain: spec
-last-updated: 2026-07-08
+last-updated: 2026-07-10
 depends-on: [adr-0001-first-order-ast, effect-signatures]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy]
@@ -39,6 +39,7 @@ val ::= VVar n                       (* de Bruijn index into the binder context 
       | VInt z                       (* z : Z *)
       | VNone | VSome val
       | VPair val val
+      | VBytes (list ascii)          (* binary byte string; evals to DBytes (IR v2 R1, 2026-07-10) *)
       | VPrim prim (list val)        (* call a registered PURE native realizer, e.g. value_succ, value_zero *)
 ```
 `prim` names resolve through the runtime manifest ([[runtime-manifest]]); an unregistered prim is a codegen

@@ -8,15 +8,19 @@ rocqv=$(rocq --version 2>/dev/null | head -1 || true)
 ocamlv=$(ocaml --version 2>/dev/null || true)
 dunev=$(dune --version 2>/dev/null || true)
 
-# Capture `Print Assumptions incr_correct` via a throwaway file compiled against the
-# built theory (keeps the source tree clean - no stray .glob/.vo next to sources).
+# Capture `Print Assumptions incr_correct` and `Print Assumptions bytes_correct`
+# via throwaway files compiled against the built theory (keeps the source tree clean).
 dune build theories/ >/dev/null 2>&1
 tmpd=$(mktemp -d)
 printf 'From Rocqeteer Require Import KV.\nPrint Assumptions incr_correct.\n' > "$tmpd/Check.v"
 assum=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/Check.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import BytesVal.\nPrint Assumptions bytes_correct.\n' > "$tmpd/CheckB.v"
+assum_bytes=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckB.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
+[ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -36,6 +40,7 @@ echo "- dune: ${dunev}"
 echo
 echo "## Proof TCB"
 echo "- \`Print Assumptions incr_correct\`: **${assum}**"
+echo "- \`Print Assumptions bytes_correct\`: **${assum_bytes}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -49,6 +54,7 @@ echo "| name | kind | ocaml | validated_by |"
 echo "|------|------|-------|--------------|"
 echo "| value_zero | primitive | Z.zero | diff_kv |"
 echo "| value_succ | primitive | Z.succ | diff_kv |"
+echo "| value_bytes | primitive | Rval.Bytes (Bytes.of_string ...) | diff_bytes |"
 echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
 echo "| Error (Throw) | effect | Rkv.Err | diff_err |"

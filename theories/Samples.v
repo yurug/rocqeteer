@@ -4,7 +4,7 @@
     test (audit finding 1) so those lowering rules are covered, not dead. All are slice-1
     typed (key = value = Z; values via VInt/VZero/VSucc). *)
 
-From Stdlib Require Import ZArith List String.
+From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
 Import ListNotations.
 Local Open Scope Z_scope.
@@ -80,6 +80,28 @@ Definition sample_cache : tm :=
     [n] iterations from empty, key 0 holds [n] (proven by induction in theories/Recur.v). *)
 Definition sample_count : tm := Repeat 5 (incr_at 0).
 
+(** BYTES: Put a binary-hostile payload (contains NUL, LF, CR) at key 5, then Get it back.
+    The literal is built with explicit Ascii constructors so the control characters are
+    unambiguous.  NUL = 0x00, LF = 0x0A (b1+b3), CR = 0x0D (b0+b2+b3).
+    The byte sequence is: 'h','i', NUL, LF, CR, '!'. *)
+Definition bytes_payload : list ascii :=
+  [ Ascii false false false true  false true  true  false (* 0x68 = 'h' *)
+  ; Ascii true  false false true  false true  true  false (* 0x69 = 'i' *)
+  ; Ascii false false false false false false false false (* 0x00 = NUL *)
+  ; Ascii false true  false true  false false false false (* 0x0A = LF  *)
+  ; Ascii true  false true  true  false false false false (* 0x0D = CR  *)
+  ; Ascii true  false false false false true  false false (* 0x21 = '!' *)
+  ].
+
+(** put key 5 := bytes_payload; get key 5; return via MatchOpt.
+    Result: Some (DBytes bytes_payload); KV: {5 -> DBytes bytes_payload}. *)
+Definition sample_bytes : tm :=
+  Bind (Perform OPut [VInt 5; VBytes bytes_payload])
+       (Bind (Perform OGet [VInt 5])
+             (MatchOpt (VVar 0)
+                (Ret VNone)
+                (Ret (VVar 0)))).
+
 (** DEMO: an "audited counter" composing Env + Trace + recursion + KV. Read an audit tag
     from the read-only context (Env), log it (Trace), bump a hit-counter at key 0 three
     times (Repeat over KV), then persist the tag at key 9 (KV). From context tag 99:
@@ -108,4 +130,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_trace"%string, sample_trace);
     ("sample_cache"%string, sample_cache);
     ("sample_count"%string, sample_count);
+    ("sample_bytes"%string, sample_bytes);
     ("demo_prog"%string, demo_prog) ].

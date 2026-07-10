@@ -10,6 +10,7 @@
       DNone          → None
       DSome v        → Some v
       DPair (a, b)   → Pair (a, b)
+      DBytes bs      → Bytes bs       (list ascii → OCaml bytes)
       Dstuck         → (see Stuck exception below)
 
     [Dstuck] is represented as an exception rather than a constructor so that
@@ -20,11 +21,12 @@
 
 type t =
   | Unit
-  | Bool of bool
-  | Int  of Z.t
+  | Bool  of bool
+  | Int   of Z.t
   | None
-  | Some of t
-  | Pair of t * t
+  | Some  of t
+  | Pair  of t * t
+  | Bytes of bytes
 
 (** Raised by generated code when a value of an unexpected shape is
     encountered (e.g. [Z.succ] applied to a non-[Int] value).  Mirrors

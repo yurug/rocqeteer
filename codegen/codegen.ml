@@ -64,6 +64,25 @@ let rec emit_val (env : string list) (v : coq_val) : string =
       Printf.sprintf
         "(match %s with Rval.Int _z -> Rval.Int (Z.succ _z) | _ -> raise Rval.Stuck)"
         (emit_val env a)
+  | VBytes bs ->
+      (* Emit [Rval.Bytes (Bytes.of_string "...")].  Each byte is escaped deterministically:
+         printable ASCII (0x20–0x7E) except backslash and double-quote are emitted as-is;
+         all other bytes use \xNN (two hex digits).  This guarantees binary-safe, byte-stable
+         output (property P4/NF5) regardless of the byte content. *)
+      let chars =
+        Coqconv.list_of_coq bs
+        |> List.map Coqconv.char_of_ascii
+      in
+      let buf = Buffer.create (List.length chars * 2) in
+      List.iter (fun c ->
+        let n = Char.code c in
+        if n >= 0x20 && n <= 0x7E && c <> '"' && c <> '\\' then
+          Buffer.add_char buf c
+        else (
+          Buffer.add_string buf "\\x";
+          Buffer.add_string buf (Printf.sprintf "%02x" n))
+      ) chars;
+      Printf.sprintf "(Rval.Bytes (Bytes.of_string \"%s\"))" (Buffer.contents buf)
 
 (* KV operations lower to the curried public wrappers (kb/spec/effect-signatures.md,
    Resolution 7). Wrong arity is a codegen error, not a silent cast.

@@ -11,7 +11,7 @@
     General prims, recursion, and other effects are deferred (kb/spec/effir.md "out of
     scope"). *)
 
-From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx.
+From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String.
 Import ListNotations.
 Local Open Scope Z_scope.
 
@@ -30,6 +30,7 @@ Inductive dval : Type :=
 | DNone  : dval
 | DSome  : dval -> dval
 | DPair  : dval -> dval -> dval
+| DBytes : list ascii -> dval
 | Dstuck : dval.
 
 (** ** Pure first-order expressions. [VVar] is a de Bruijn index.
@@ -42,8 +43,9 @@ Inductive val : Type :=
 | VNone : val
 | VSome : val -> val
 | VPair : val -> val -> val
-| VZero : val
-| VSucc : val -> val.
+| VZero   : val
+| VSucc   : val -> val
+| VBytes  : list ascii -> val.
 
 (** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env), [OTrace]
     (Trace), and [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
@@ -81,6 +83,7 @@ Fixpoint eval_val (env : list dval) (v : val) : dval :=
                 | DInt z => DInt (Z.succ z)
                 | _      => Dstuck
                 end
+  | VBytes bs => DBytes bs
   end.
 
 Definition state : Type := M.t dval.

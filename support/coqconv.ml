@@ -80,6 +80,27 @@ let string_of_coq (s : Cstr.string) : string =
 module E = Ref_extracted.EffIR
 module R = Rkv.Rval
 
+(** Convert a Coq [list ascii] to native [bytes].  Each [Ascii.ascii] is mapped via
+    [char_of_ascii] (LSB-first bit encoding); the result is a fresh [bytes] value. *)
+let ascii_list_to_bytes (al : Ascii.ascii Datatypes.list) : bytes =
+  let chars = list_of_coq al in
+  let b = Bytes.create (List.length chars) in
+  List.iteri (fun i a -> Bytes.set b i (char_of_ascii a)) chars;
+  b
+
+(** Convert native [bytes] to a Coq [list ascii] for the dval_of_rval direction. *)
+let bytes_to_ascii_list (b : bytes) : Ascii.ascii Datatypes.list =
+  let n = Bytes.length b in
+  (* Build the coq list right-to-left using Coq_cons/Coq_nil. *)
+  let result = ref Datatypes.Coq_nil in
+  for i = n - 1 downto 0 do
+    let c = Char.code (Bytes.get b i) in
+    let bit k = if c land (1 lsl k) <> 0 then Datatypes.Coq_true else Datatypes.Coq_false in
+    let a = Ascii.Ascii (bit 0, bit 1, bit 2, bit 3, bit 4, bit 5, bit 6, bit 7) in
+    result := Datatypes.Coq_cons (a, !result)
+  done;
+  !result
+
 let rec rval_of_dval (d : E.dval) : R.t =
   match d with
   | E.DUnit       -> R.Unit
@@ -88,6 +109,7 @@ let rec rval_of_dval (d : E.dval) : R.t =
   | E.DNone       -> R.None
   | E.DSome v     -> R.Some (rval_of_dval v)
   | E.DPair (a,b) -> R.Pair (rval_of_dval a, rval_of_dval b)
+  | E.DBytes al   -> R.Bytes (ascii_list_to_bytes al)
   | E.Dstuck      -> raise R.Stuck
 
 let rec dval_of_rval (v : R.t) : E.dval =
@@ -99,3 +121,4 @@ let rec dval_of_rval (v : R.t) : E.dval =
   | R.None      -> E.DNone
   | R.Some v    -> E.DSome (dval_of_rval v)
   | R.Pair(a,b) -> E.DPair (dval_of_rval a, dval_of_rval b)
+  | R.Bytes b   -> E.DBytes (bytes_to_ascii_list b)
