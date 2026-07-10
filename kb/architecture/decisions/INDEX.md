@@ -20,6 +20,7 @@ related: [index, arch-overview]
 | `adr-0006-vertical-slice.md` | KV green end-to-end before any breadth | #5 scope exhaustion; #7 fragment-too-small |
 | `adr-0007-ir-v2-sizing.md` | IR v2 costs live in the runtime value universe, not proofs; dispatch ~12ns, no inlining | (spike-measured, 2026-07-10) |
 | `adr-0008-general-match.md` | Match replaces MatchOpt: depth-1 patterns, mandatory default, first-match-wins, chained codegen | R2 design (2026-07-10) |
+| `adr-0009-vprim-registry.md` | Total prims (option-encoded failure via Match), Rocq reference = spec, manifest-registered realizers | R3 design (2026-07-10) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing
