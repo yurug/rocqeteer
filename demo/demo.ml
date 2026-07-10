@@ -52,18 +52,35 @@ let reference () : (int * int) list * int list =
              | D.Coq_pair (_, _) -> failwith "non-int")
         |> List.sort compare
       in
-      let trace = Coqconv.list_of_coq tr |> List.map (function E.DInt z -> Z.to_int (z_of z) | _ -> 0) in
+      let trace =
+        Coqconv.list_of_coq tr
+        |> List.map (function E.DInt z -> Z.to_int (z_of z) | _ -> 0)
+      in
       (kv, trace)
 
-(* fast: the GENERATED OCaml run under the native Env / Trace / KV handler stack *)
+(* fast: the GENERATED OCaml run under the native Env / Trace / KV handler stack.
+   Context and trace events are now Rval.t; KV values are Rval.t.
+   We extract the underlying Z.t for the int display (demo_prog uses only integer values). *)
 let fast () : (int * int) list * int list =
   let kvtbl = Rkv.Kv.T.create 16 in
   let buf = ref [] in
-  Rkv.Env.run (Z.of_int tag) (fun () ->
+  (* Context is Rval.Int tag; Env.run expects Rval.t *)
+  Rkv.Env.run (Rkv.Rval.Int (Z.of_int tag)) (fun () ->
       Rkv.Trace.run buf (fun () ->
           Rkv.Kv.run kvtbl (fun () -> ignore (Gen.demo_prog ()))));
-  let kv = Rkv.Kv.observe kvtbl |> List.map (fun (k, v) -> (Z.to_int k, Z.to_int v)) in
-  let trace = Rkv.Trace.contents buf |> List.map Z.to_int in
+  let kv =
+    Rkv.Kv.observe kvtbl
+    |> List.map (fun (k, v) ->
+           match v with
+           | Rkv.Rval.Int z -> (Z.to_int k, Z.to_int z)
+           | _ -> failwith "demo: non-int KV value")
+  in
+  let trace =
+    Rkv.Trace.contents buf
+    |> List.map (function
+           | Rkv.Rval.Int z -> Z.to_int z
+           | _ -> failwith "demo: non-int trace event")
+  in
   (kv, trace)
 
 let show_kv kv = "{ " ^ String.concat ", " (List.map (fun (k, v) -> Printf.sprintf "%d->%d" k v) kv) ^ " }"

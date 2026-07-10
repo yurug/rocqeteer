@@ -18,27 +18,30 @@ module Gen = Generated.Prog0_generated
 
 let key7 = Z.of_int 7
 
-(* Reference: build the map from puts (last-write-wins), run [term], normalize to sorted Z. *)
-let ref_observe (term : E.tm) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+(* Reference: build the map from puts (last-write-wins), run [term], normalize to sorted Rval. *)
+let ref_observe (term : E.tm) (pairs : (Z.t * Z.t) list) : (Z.t * Rkv.Rval.t) list =
   let m0 =
     List.fold_left
-      (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
+      (fun m (k, v) ->
+         E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
   let bindings =
-    match E.observe_full E.DUnit m0 term with D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
+    match E.observe_full E.DUnit m0 term with
+    | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->
          match p with
-         | D.Coq_pair (k, E.DInt v) -> (Coqconv.z_of_coqz k, Coqconv.z_of_coqz v)
-         | D.Coq_pair (_, _) -> failwith "reference produced a non-int KV value")
+         | D.Coq_pair (k, v) -> (Coqconv.z_of_coqz k, Coqconv.rval_of_dval v))
   |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
 
-(* Fast: build the Hashtbl from the same puts, run the generated [fn] under the handler. *)
-let fast_observe (name : string) (fn : unit -> unit) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+(* Fast: build the Hashtbl from the same puts (values wrapped as Rval.Int), run the
+   generated [fn] under the handler. *)
+let fast_observe (name : string) (fn : unit -> unit) (pairs : (Z.t * Z.t) list)
+    : (Z.t * Rkv.Rval.t) list =
   let table = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k v) pairs;
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k (Rkv.Rval.Int v)) pairs;
   (match Rkv.Kv.run_checked table fn with
    | Ok () -> ()
    | Error e -> failwith ("fast " ^ name ^ ": " ^ Rkv.Kv.string_of_error e));
@@ -86,7 +89,9 @@ let has_dup pairs =
 let key7_present pairs = List.exists (fun (k, _) -> Z.equal k key7) pairs
 
 let show l =
-  "[" ^ String.concat "; " (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Z.to_string v)) l) ^ "]"
+  "[" ^ String.concat "; "
+    (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Rkv.Rval.to_string v)) l)
+  ^ "]"
 
 let () =
   let n = 5000 in
@@ -102,11 +107,15 @@ let () =
         let r = ref_observe term pairs and f = fast_observe name fn pairs in
         let eq =
           List.length r = List.length f
-          && List.for_all2 (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Z.equal v1 v2) r f
+          && List.for_all2
+               (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Rkv.Rval.equal v1 v2)
+               r f
         in
         if not eq then (
           incr fails;
-          Printf.printf "MISMATCH %s (RSEED=%d) state=%s\n  ref =%s\n  fast=%s\n" name seed (show pairs)
+          Printf.printf "MISMATCH %s (RSEED=%d) state=%s\n  ref =%s\n  fast=%s\n"
+            name seed
+            (show (List.map (fun (k,v) -> (k, Rkv.Rval.Int v)) pairs))
             (show r) (show f)))
       programs
   done;

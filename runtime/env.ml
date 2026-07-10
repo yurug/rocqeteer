@@ -1,9 +1,10 @@
 (** Runtime Env realizer: the OCaml backend for the [OAsk] effect — a read-only context.
 
     [OAsk] reads an ambient value supplied by [run]; the handler resumes with it and never
-    mutates anything (kb/spec/effect-signatures.md). Slice context type is Z, like values. *)
+    mutates anything (kb/spec/effect-signatures.md).  Context type is now [Rval.t] to match
+    the dval universe in theories/EffIR.v (IR v2 milestone 1). *)
 
-type ctx = Z.t
+type ctx = Rval.t
 
 type _ Effect.t += Ask : ctx Effect.t
 

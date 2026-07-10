@@ -82,5 +82,11 @@ Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 verdis (~/work/dev/verdis) drives IR v2 (its kb/external/rocqeteer.md holds requirements R0-R10 per its
 ADR-0002 — no timebox, user decision). R0 = this packaging commit: `rocqeteer.opam` (generate_opam_files),
 theory installable to user-contrib (package rocqeteer), codegen public as `rocqeteer-codegen`. Verified:
-dune install → 35 files incl. Rocqeteer/*.vo + bin/rocqeteer-codegen; make all green. Next upstream
-milestone: VBytes blast-radius spike (verdis plan step 1), then IR v2 planning from R1-R10.
+dune install → 35 files incl. Rocqeteer/*.vo + bin/rocqeteer-codegen; make all green. IR v2 MILESTONE 1 DONE (2026-07-10): runtime value universe
+generalized — new runtime/rval.ml(+mli) mirrors dval 1:1 (Unit/Bool/Int/None/Some/Pair; Dstuck = exception
+Stuck, not a constructor); all value-carrying handlers (Kv/Env/Trace/Cache/Err) + observables + all 7 diff
+suites + codegen + demo retyped to Rval.t; ZERO theories/ changes, make all + make demo green from clean.
+Design notes: Kv.get/Cache.get return Rval.t encoding option via opt_to_rval (mirrors reference
+opt_to_dval); emit_key separate from emit_val (keys stay Z.t); check_generated_fresh.sh now diffs source
+vs build artifact (same CI intent, no mid-dev chicken-and-egg). Next milestones: R1 VBytes (now a one-case
+addition), R2 general Match, R3 VPrim int64/bytes, R7 reply ADT — then verdis step 2 (proven RESP2 codec).

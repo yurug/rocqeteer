@@ -3,7 +3,7 @@ id: effect-signatures
 type: spec
 summary: An effect signature is a type-indexed family of operations declared in Rocq, mirrored 1:1 by an OCaml extensible-effect declaration; KV is the slice-1 signature, and effects compose by explicit sum.
 domain: spec
-last-updated: 2026-07-08
+last-updated: 2026-07-10
 depends-on: [effir]
 refines: []
 related: [reference-semantics, codegen, ext-ocaml5-effects]
@@ -59,11 +59,13 @@ Verbose but transparent — the generator emits predictable constructors and the
 explicit. A typeclass-based `SubEff` injection is a possible later ergonomic layer, not v1.
 
 ## Slice-1 signature: KV
-`Get`/`Put`/`Delete`. The KV signature stays parametric over `key`/`value`, but the **slice-1
-instantiation is concrete `key = value = Z`** (`TInt`, realized to `Zarith.Z.t`; reference map = `FMapAVL`
-over `Z_as_OT`) so `incr`'s arithmetic — pure prims `value_zero = Z.zero` / `value_succ = Z.succ`
-(registered, [[runtime-manifest]]) — is well-typed. Abstract `TNamed` key/value realization is deferred to
-the codec pilot (`plan.md` Resolution 3).
+`Get`/`Put`/`Delete`. The KV signature stays parametric over `key`/`value`. **IR v2 milestone 1
+(2026-07-10)**: the concrete instantiation is now `key = Z.t` and `value = Rval.t` (the native
+OCaml sum mirroring `dval` in `theories/EffIR.v`; see `runtime/rval.ml`). Keys stay `Zarith.Z.t`;
+bytes keys are a later milestone. The reference map is `FMapAVL` over `Z_as_OT`. Pure prims
+`value_zero = Rval.Int Z.zero` / `value_succ = (fun (Rval.Int z) -> Rval.Int (Z.succ z))` are
+emitted by the codegen and validated by `diff_kv` (registered, [[runtime-manifest]]). Abstract
+`TNamed` key/value realization is deferred to the codec pilot (`plan.md` Resolution 3).
 
 ### Arity convention (codegen ↔ handler)
 Effect constructors are **tupled** (`Put : key * value -> unit Effect.t`); the public `perform` wrappers are

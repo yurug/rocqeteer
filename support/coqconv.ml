@@ -72,3 +72,30 @@ let string_of_coq (s : Cstr.string) : string =
   in
   go s;
   Buffer.contents buf
+
+(* Converters between the extracted [dval] and the native [Rval.t].
+   The mapping is one-for-one; both directions are total for current constructors.
+   [Dstuck] is raised as [Rval.Stuck] because it is never produced for well-typed
+   closed terms and there is no native value to represent it. *)
+module E = Ref_extracted.EffIR
+module R = Rkv.Rval
+
+let rec rval_of_dval (d : E.dval) : R.t =
+  match d with
+  | E.DUnit       -> R.Unit
+  | E.DBool b     -> R.Bool (bool_of_coq b)
+  | E.DInt  z     -> R.Int  (z_of_coqz z)
+  | E.DNone       -> R.None
+  | E.DSome v     -> R.Some (rval_of_dval v)
+  | E.DPair (a,b) -> R.Pair (rval_of_dval a, rval_of_dval b)
+  | E.Dstuck      -> raise R.Stuck
+
+let rec dval_of_rval (v : R.t) : E.dval =
+  match v with
+  | R.Unit      -> E.DUnit
+  | R.Bool b    -> E.DBool (if b then Ref_extracted.Datatypes.Coq_true
+                                  else Ref_extracted.Datatypes.Coq_false)
+  | R.Int  z    -> E.DInt  (coqz_of_z z)
+  | R.None      -> E.DNone
+  | R.Some v    -> E.DSome (dval_of_rval v)
+  | R.Pair(a,b) -> E.DPair (dval_of_rval a, dval_of_rval b)

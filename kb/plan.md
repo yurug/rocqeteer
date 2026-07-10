@@ -3,7 +3,7 @@ id: plan
 type: procedure
 summary: Three-step implementation plan for the KV vertical slice — bridge spike first (riskiest), then the proven incr, then the hardened adversarial differential slice — risk-ordered, each with its single biggest unknown, refined by the plan-simulation gate.
 domain: planning
-last-updated: 2026-07-08
+last-updated: 2026-07-10
 depends-on: [prd, arch-overview, effir, adr-0001-first-order-ast, adr-0002-extraction-bridge, adr-0006-vertical-slice]
 refines: []
 related: [reference-semantics, codegen, conv-testing-strategy, runbook-build-validate]
@@ -36,9 +36,10 @@ and the effect syntax compiles. Seven items resolved (full report: `reports/plan
 2. **Interpreter totality:** `run` is **total**, returning `dval * state` with a **`Dstuck` sentinel** (not
    `option`) — `verifies` destructures a total pair. A small "well-typed closed term" view supplies the
    lemmas that discharge `Dstuck` as unreachable — a guaranteed Step-2 build item, not a contingency.
-3. **Slice-1 types are concrete:** `key = value = TInt` (Rocq `Z`, realized to `Zarith.Z.t`), so
-   `value_succ = Z.succ` is well-typed and the reference map is `FMapAVL` over `Z_as_OT`. Abstract `TNamed`
-   realization is deferred to the codec pilot (`value_succ`/`value_zero` still exercise the prim manifest).
+3. **Slice-1 types are concrete:** `key = Z.t` (Zarith) and `value = Rval.t` (IR v2 milestone 1,
+   2026-07-10; `Rval.t` mirrors the `dval` sum in `theories/EffIR.v`). The reference map is `FMapAVL`
+   over `Z_as_OT`. Pure prims `value_zero = Rval.Int Z.zero` / `value_succ` (match on `Rval.Int`) are
+   emitted by codegen. Abstract `TNamed` key/value realization is deferred to the codec pilot.
 4. **Extraction is faithful & multi-module:** the extracted ADT is renamed (`coq_val`, `coq_Z`, Peano `nat`,
    inductive `string`/`ascii`) across several files (`EffIR`, `BinNums`, `Datatypes`, ...), all
    `Obj.magic`-free. The only `Extract` mappings are manifest-registered realizers (`Z -> Zarith.Z.t`). The
@@ -98,8 +99,8 @@ ordering forces early.
 **Why second:** the proof is comparatively routine once the bridge works; do it before hardening.
 
 **Build:**
-- `incr` as an EffIR term (`Get k`; match; `Put k (value_succ …)`) with slice-1 `key = value = Z` (concrete
-  `TInt`, Resolution 3); register pure prims `value_zero = Z.zero` / `value_succ = Z.succ`. [[runtime-manifest]], [[ext-zarith]]
+- `incr` as an EffIR term (`Get k`; match; `Put k (value_succ …)`) with slice-1 `key = Z.t`, `value = Rval.t`
+  (Resolution 3, updated IR v2 milestone 1); codegen emits `Rval.Int` wrappers and match-on-Int for VSucc. [[runtime-manifest]], [[ext-zarith]]
 - A small **well-typed closed-term view** + lemmas discharging the `Dstuck` sentinel as unreachable (Resolution 2).
 - Prove KV state laws (P7) and `incr_spec` (P-functional) over the reference handler — **no `Admitted`**.
 - **Anti-vacuity companions** ([[adr-0005-anti-vacuity]]): an inhabitance lemma `∃ s, pre s`, and an in-file

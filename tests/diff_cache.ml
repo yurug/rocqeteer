@@ -10,41 +10,45 @@ module D = Ref_extracted.Datatypes
 module S = Ref_extracted.Samples
 module Gen = Generated.Prog0_generated
 
-let z_of = Coqconv.z_of_coqz
-
 let norm bindings =
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->
          match p with
-         | D.Coq_pair (k, E.DInt v) -> (z_of k, z_of v)
-         | D.Coq_pair (_, _) -> failwith "reference: non-int KV value")
+         | D.Coq_pair (k, v) -> (Coqconv.z_of_coqz k, Coqconv.rval_of_dval v))
   |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
 
-let ref_kv (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+let ref_kv (pairs : (Z.t * Z.t) list) : (Z.t * Rkv.Rval.t) list =
   let m0 =
     List.fold_left
-      (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
+      (fun m (k, v) ->
+         E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
       E.M.empty pairs
   in
   match E.observe_full E.DUnit m0 S.sample_cache with
   | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> norm bs
 
-(* [prefill] optionally seeds the cache with (0 -> 1) to exercise the HIT path. *)
-let fast_kv (prefill : bool) (pairs : (Z.t * Z.t) list) : (Z.t * Z.t) list =
+(* [prefill] optionally seeds the cache with (0 -> Rval.Int 1) to exercise the HIT path. *)
+let fast_kv (prefill : bool) (pairs : (Z.t * Z.t) list) : (Z.t * Rkv.Rval.t) list =
   let kvtbl = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, v) -> Rkv.Kv.T.replace kvtbl k v) pairs;
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace kvtbl k (Rkv.Rval.Int v)) pairs;
   let ctbl = Rkv.Cache.T.create 8 in
-  if prefill then Rkv.Cache.T.replace ctbl (Z.of_int 0) (Z.of_int 1);
-  Rkv.Cache.run ctbl (fun () -> Rkv.Kv.run kvtbl (fun () -> ignore (Gen.sample_cache ())));
+  if prefill then Rkv.Cache.T.replace ctbl (Z.of_int 0) (Rkv.Rval.Int (Z.of_int 1));
+  Rkv.Cache.run ctbl (fun () ->
+      Rkv.Kv.run kvtbl (fun () -> ignore (Gen.sample_cache ())));
   Rkv.Kv.observe kvtbl
 
 let eq a b =
   List.length a = List.length b
-  && List.for_all2 (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Z.equal v1 v2) a b
+  && List.for_all2
+       (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Rkv.Rval.equal v1 v2)
+       a b
 
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621
 let rng = Random.State.make [| seed |]
-let gen_state () = List.init (Random.State.int rng 8) (fun _ -> (Z.of_int (2 + Random.State.int rng 10), Z.of_int (Random.State.int rng 1000)))
+let gen_state () =
+  List.init (Random.State.int rng 8)
+    (fun _ ->
+       (Z.of_int (2 + Random.State.int rng 10), Z.of_int (Random.State.int rng 1000)))
 
 let () =
   let n = 3000 in
