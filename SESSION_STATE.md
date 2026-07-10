@@ -1,6 +1,6 @@
 # Session state — Rocqeteer
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-10_
 
 ## What this project is
 A domain-independent trusted toolchain to use Rocq as a certified programming language: write effectful
@@ -77,3 +77,10 @@ Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 - Mode B (monadic Gallina via MetaRocq), ITree bridge, GADT witnesses, Error/Env/Trace/Cache effects, codec
   pilot: all post-slice-1.
 </content>
+
+## Interleaved consumer: verdis (R0 done 2026-07-10)
+verdis (~/work/dev/verdis) drives IR v2 (its kb/external/rocqeteer.md holds requirements R0-R10 per its
+ADR-0002 — no timebox, user decision). R0 = this packaging commit: `rocqeteer.opam` (generate_opam_files),
+theory installable to user-contrib (package rocqeteer), codegen public as `rocqeteer-codegen`. Verified:
+dune install → 35 files incl. Rocqeteer/*.vo + bin/rocqeteer-codegen; make all green. Next upstream
+milestone: VBytes blast-radius spike (verdis plan step 1), then IR v2 planning from R1-R10.

@@ -1,3 +1,5 @@
 (executable
  (name codegen)
+ (public_name rocqeteer-codegen)
+ (package rocqeteer)
  (libraries ref_extracted coqconv zarith))
