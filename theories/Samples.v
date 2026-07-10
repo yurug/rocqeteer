@@ -12,9 +12,10 @@ Local Open Scope Z_scope.
 (** get 2; if absent put 1, else DELETE 2 — exercises [ODelete]. *)
 Definition sample_delete : tm :=
   Bind (Perform OGet [VInt 2])
-       (MatchOpt (VVar 0)
-          (Perform OPut [VInt 2; VSucc VZero])
-          (Perform ODelete [VInt 2])).
+       (Match (VVar 0)
+          [(PNone, Perform OPut [VInt 2; VSucc VZero]);
+           (PSome, Perform ODelete [VInt 2])]
+          (Perform OPut [VInt 2; VSucc VZero])).
 
 (** put 3 := 1 ; put 4 := 2 — two sequential Performs to distinct keys. *)
 Definition sample_two : tm :=
@@ -33,9 +34,10 @@ Definition sample_neg : tm := incr_at (-3).
 Definition sample_nested : tm :=
   Bind (Perform OGet [VInt 8])
        (Bind (Perform OGet [VInt 9])
-             (MatchOpt (VVar 1)
-                (Perform OPut [VInt 8; VSucc VZero])
-                (Perform OPut [VInt 8; VSucc (VVar 0)]))).
+             (Match (VVar 1)
+                [(PNone, Perform OPut [VInt 8; VSucc VZero]);
+                 (PSome, Perform OPut [VInt 8; VSucc (VVar 0)])]
+                (Perform OPut [VInt 8; VSucc VZero]))).
 
 (** ERROR effect: put 1 := 1; THROW 99; put 2 := 2 — the throw aborts, so the second put
     never runs and the state keeps only the pre-throw write. *)
@@ -48,9 +50,10 @@ Definition sample_throw : tm :=
     normally, the other aborts, so a random state exercises both. *)
 Definition sample_guard5 : tm :=
   Bind (Perform OGet [VInt 5])
-       (MatchOpt (VVar 0)
-          (Perform OThrow [VInt 7])
-          (Perform OPut [VInt 5; VSucc (VVar 0)])).
+       (Match (VVar 0)
+          [(PNone, Perform OThrow [VInt 7]);
+           (PSome, Perform OPut [VInt 5; VSucc (VVar 0)])]
+          (Perform OThrow [VInt 7])).
 
 (** ENV + KV composed: read the read-only context, then store it at key 1 — exercises
     [OAsk] and that the asked value flows into a Put. *)
@@ -71,10 +74,12 @@ Definition sample_trace : tm :=
     value — that observational invisibility is what [theories/Cache.v] proves. *)
 Definition sample_cache : tm :=
   Bind (Perform OCacheGet [VInt 0])
-       (MatchOpt (VVar 0)
+       (Match (VVar 0)
+          [(PNone, Bind (Perform OCachePut [VInt 0; VSucc VZero])
+                        (Perform OPut [VInt 1; VSucc VZero]));
+           (PSome, Perform OPut [VInt 1; VVar 0])]
           (Bind (Perform OCachePut [VInt 0; VSucc VZero])
-                (Perform OPut [VInt 1; VSucc VZero]))
-          (Perform OPut [VInt 1; VVar 0])).
+                (Perform OPut [VInt 1; VSucc VZero]))).
 
 (** RECURSION: increment key 0 five times via a bounded loop — exercises [Repeat]. After
     [n] iterations from empty, key 0 holds [n] (proven by induction in theories/Recur.v). *)
@@ -93,14 +98,44 @@ Definition bytes_payload : list ascii :=
   ; Ascii true  false false false false true  false false (* 0x21 = '!' *)
   ].
 
-(** put key 5 := bytes_payload; get key 5; return via MatchOpt.
+(** put key 5 := bytes_payload; get key 5; return via Match.
     Result: Some (DBytes bytes_payload); KV: {5 -> DBytes bytes_payload}. *)
 Definition sample_bytes : tm :=
   Bind (Perform OPut [VInt 5; VBytes bytes_payload])
        (Bind (Perform OGet [VInt 5])
-             (MatchOpt (VVar 0)
-                (Ret VNone)
-                (Ret (VVar 0)))).
+             (Match (VVar 0)
+                [(PNone, Ret VNone);
+                 (PSome, Ret (VVar 0))]
+                (Ret VNone))).
+
+(** DISPATCH (R2 anti-vacuity): read the context via Env, then dispatch on byte-string
+    command names. "GET" -> Ret (VInt 1), "SET" -> Ret (VInt 2), any other -> Ret (VInt 0).
+    This exercises [Match] with [PBytes] literal patterns and a first-match-wins default.
+    Proven correct by vm_compute in theories/Dispatch.v.
+
+    ASCII encoding (Rocq Ascii b0..b7, LSB-first):
+      'G' = 0x47 = 0b01000111: Ascii true true true false false false true false
+      'E' = 0x45 = 0b01000101: Ascii true false true false false false true false
+      'T' = 0x54 = 0b01010100: Ascii false false true false true false true false
+      'S' = 0x53 = 0b01010011: Ascii true true false false true false true false *)
+Definition get_bytes : list ascii :=
+  [ Ascii.Ascii true  true  true  false false false true false  (* 'G' 0x47 *)
+  ; Ascii.Ascii true  false true  false false false true false  (* 'E' 0x45 *)
+  ; Ascii.Ascii false false true  false true  false true false  (* 'T' 0x54 *)
+  ].
+
+Definition set_bytes : list ascii :=
+  [ Ascii.Ascii true  true  false false true  false true false  (* 'S' 0x53 *)
+  ; Ascii.Ascii true  false true  false false false true false  (* 'E' 0x45 *)
+  ; Ascii.Ascii false false true  false true  false true false  (* 'T' 0x54 *)
+  ].
+
+Definition sample_dispatch : tm :=
+  Bind (Perform OAsk [])
+       (Match (VVar 0)
+          [(PBytes get_bytes, Ret (VInt 1));
+           (PBytes set_bytes, Ret (VInt 2))]
+          (Ret (VInt 0))).
 
 (** DEMO: an "audited counter" composing Env + Trace + recursion + KV. Read an audit tag
     from the read-only context (Env), log it (Trace), bump a hit-counter at key 0 three
@@ -131,4 +166,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_cache"%string, sample_cache);
     ("sample_count"%string, sample_count);
     ("sample_bytes"%string, sample_bytes);
+    ("sample_dispatch"%string, sample_dispatch);
     ("demo_prog"%string, demo_prog) ].

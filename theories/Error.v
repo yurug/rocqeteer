@@ -33,7 +33,8 @@ Theorem sample_throw_aborts :
   /\ M.find 2 w'.(kv) = None.
 Proof.
   unfold sample_throw.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left].
   split; [ reflexivity | split ].
   - rewrite find_add_same; reflexivity.
   - rewrite add_neq_o by congruence; rewrite empty_o; reflexivity.
@@ -52,7 +53,8 @@ Theorem sample_nothrow_completes :
   o = ORet DUnit /\ M.find 2 w'.(kv) = Some (DInt 2).
 Proof.
   unfold sample_nothrow.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left].
   split; [ reflexivity | rewrite find_add_same; reflexivity ].
 Qed.
 

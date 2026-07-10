@@ -20,7 +20,8 @@ Theorem sample_trace_records :
   tr = [DInt 10; DInt 20].
 Proof.
   unfold observe, run_top, sample_trace.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_trace kv ctx trace init_world rev].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_trace kv ctx trace init_world rev
+       match_pat push_env fold_left].
   reflexivity.
 Qed.
 
@@ -34,7 +35,8 @@ Theorem sample_trace_order_matters :
   tr <> [DInt 10; DInt 20].
 Proof.
   unfold observe, run_top, sample_trace_wrong.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_trace kv ctx trace init_world rev].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_trace kv ctx trace init_world rev
+       match_pat push_env fold_left].
   discriminate.
 Qed.
 

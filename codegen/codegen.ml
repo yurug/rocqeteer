@@ -1,12 +1,10 @@
-(** rocq-eff-codegen (slice 1): lower an extracted EffIR [tm] to direct-style OCaml 5.
+(** rocq-eff-codegen (IR v2 R2: general Match): lower an extracted EffIR [tm] to
+    direct-style OCaml 5.
 
     The monad is ERASED by construction: [Bind] -> [let], [Perform] -> a [Kv.*] call,
-    [MatchOpt] -> [match]. No [Bind]/free-monad constructor survives into the output
-    (property P3). Out-of-fragment input fails loudly rather than emitting unsound code
-    (kb/spec/codegen.md, kb/spec/error-taxonomy.md).
-
-    Slice-1 scope: it lowers exactly the four [tm] forms and the [val] forms that
-    [prog0] needs; anything else raises [Codegen_error].
+    [Match] -> chained match/if (adr-0008-general-match §Decision 4). No [Bind]/free-monad
+    constructor survives into the output (property P3). Out-of-fragment input fails loudly
+    rather than emitting unsound code (kb/spec/codegen.md, kb/spec/error-taxonomy.md).
 
     Values are typed as [Rval.t] at effect boundaries (IR v2 milestone 1).  Keys at
     KV/Cache call sites stay [Z.t] — bytes keys are a later milestone.  When generated
@@ -99,7 +97,61 @@ let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   | OCachePut, [k;v] -> Printf.sprintf "(Cache.put %s %s)" (emit_key env k) (emit_val env v)
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
 
-let rec emit_tm (env : string list) (t : tm) : string =
+(* Helper: emit escaped bytes literal string from an ascii list (same escaping as emit_val). *)
+let emit_bytes_literal bs =
+  let chars = List.map Coqconv.char_of_ascii bs in
+  let buf = Buffer.create (List.length chars * 2) in
+  List.iter (fun c ->
+    let n = Char.code c in
+    if n >= 0x20 && n <= 0x7E && c <> '"' && c <> '\\' then
+      Buffer.add_char buf c
+    else (
+      Buffer.add_string buf "\\x";
+      Buffer.add_string buf (Printf.sprintf "%02x" n))
+  ) chars;
+  Buffer.contents buf
+
+(* [emit_branch] compiles one branch (adr-0008 §Decision 4 chaining scheme).
+   For literal patterns (PBytes, PUnit, PBool, PInt): emit an if-then-else equality guard.
+   For constructor patterns (PNone, PSome, PPair): emit an OCaml match with [| _ -> next].
+   [scrut_name] is the already-evaluated scrutinee variable; [next] is the fallback string.
+
+   De Bruijn binder convention for PPair (adr-0008):
+     match_pat returns [fst; snd]; push_env pushes left-to-right, so last pushed = db0 = snd.
+     The codegen mirrors this: name_fst = bind_name env (depth d), name_snd = bind_name (env+1)
+     (depth d+1). The extended env is [name_snd; name_fst; ...env...], so db0 = name_snd (snd
+     component) and db1 = name_fst (first component). *)
+let rec emit_branch (env : string list) (scrut_name : string) (p : pat) (body : tm) (next : string) : string =
+  match p with
+  | PBytes bs ->
+      let lit = emit_bytes_literal (Coqconv.list_of_coq bs) in
+      Printf.sprintf "(if Rval.equal %s (Rval.Bytes (Bytes.of_string \"%s\")) then %s else %s)"
+        scrut_name lit (emit_tm env body) next
+  | PUnit ->
+      Printf.sprintf "(if Rval.equal %s Rval.Unit then %s else %s)"
+        scrut_name (emit_tm env body) next
+  | PBool b ->
+      let blit = if Coqconv.bool_of_coq b then "true" else "false" in
+      Printf.sprintf "(if Rval.equal %s (Rval.Bool %s) then %s else %s)"
+        scrut_name blit (emit_tm env body) next
+  | PInt z ->
+      Printf.sprintf "(if Rval.equal %s (Rval.Int %s) then %s else %s)"
+        scrut_name (emit_z z) (emit_tm env body) next
+  | PNone ->
+      Printf.sprintf "(match %s with Rval.None -> %s | _ -> %s)"
+        scrut_name (emit_tm env body) next
+  | PSome ->
+      let name = bind_name env in
+      Printf.sprintf "(match %s with Rval.Some %s -> %s | _ -> %s)"
+        scrut_name name (emit_tm (name :: env) body) next
+  | PPair ->
+      let name_fst = bind_name env in               (* = db1 after both are pushed *)
+      let name_snd = bind_name (name_fst :: env) in (* = db0 (last pushed) *)
+      let env' = name_snd :: name_fst :: env in
+      Printf.sprintf "(match %s with Rval.Pair (%s, %s) -> %s | _ -> %s)"
+        scrut_name name_fst name_snd (emit_tm env' body) next
+
+and emit_tm (env : string list) (t : tm) : string =
   match t with
   | Ret v -> emit_val env v
   | Bind (t1, t2) ->
@@ -107,20 +159,34 @@ let rec emit_tm (env : string list) (t : tm) : string =
       Printf.sprintf "(let %s = %s in %s)" name (emit_tm env t1)
         (emit_tm (name :: env) t2)
   | Perform (o, args) -> emit_perform env o (Coqconv.list_of_coq args)
-  | MatchOpt (scrut, none, some) ->
-      let name = bind_name env in
-      Printf.sprintf "(match %s with Rval.None -> %s | Rval.Some %s -> %s | _ -> raise Rval.Stuck)"
-        (emit_val env scrut) (emit_tm env none) name
-        (emit_tm (name :: env) some)
+  | Match (scrut, branches, default) ->
+      (* Branch-by-branch chaining (adr-0008 §Decision 4):
+         each branch compiles to a match/if with the next branch as fallback;
+         the chain ends at the default arm. Bind the scrutinee to a fresh name once
+         so it is evaluated exactly once even if referenced by many branches. *)
+      let scrut_name = "_s" ^ string_of_int (List.length env) in
+      let default_str = emit_tm env default in
+      let branch_list = Coqconv.list_of_coq branches in
+      (* Build the chain right-to-left: fold from the end so the first branch wraps last. *)
+      let chain =
+        List.fold_right
+          (fun br next_str ->
+             match br with
+             | Ref_extracted.Datatypes.Coq_pair (p, body) ->
+                 emit_branch env scrut_name p body next_str)
+          branch_list
+          default_str
+      in
+      Printf.sprintf "(let %s = %s in %s)" scrut_name (emit_val env scrut) chain
   | Repeat (n, body) ->
       (* bounded loop -> a native for-loop; the body runs n times for its effects *)
       Printf.sprintf "(for _i = 1 to %d do ignore (%s) done)" (Coqconv.int_of_nat n)
         (emit_tm env body)
 
 let header =
-  "(* Generated by rocq-eff-codegen (slice 1). Source: theories/EffIR.v + Samples.v.\n\
+  "(* Generated by rocq-eff-codegen (IR v2 R2). Source: theories/EffIR.v + Samples.v.\n\
   \   Direct-style; the EffIR monad has been erased. Do not edit manually.\n\
-  \   See kb/spec/codegen.md. *)\n\
+  \   See kb/spec/codegen.md and kb/architecture/decisions/adr-0008-general-match.md. *)\n\
    open Rkv\n"
 
 (* Emit one direct-style [name () = …] per entry of the SINGLE-SOURCE program list

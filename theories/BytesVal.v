@@ -22,7 +22,7 @@ Opaque M.find M.add M.empty M.remove.
 (** ** Correctness: sample_bytes from empty returns the stored value.
 
     From the empty world, [sample_bytes] does:
-      Put 5 (DBytes payload)  ->  Get 5  ->  MatchOpt Some(DBytes payload)  ->  Ret (VVar 0)
+      Put 5 (DBytes payload)  ->  Get 5  ->  Match/PSome binds payload  ->  Ret (VVar 0)
     The outcome is [ORet (DSome (DBytes bytes_payload))] and the KV map has key 5. *)
 Theorem bytes_correct :
   let '(outcome, w) := run_top DUnit sample_bytes in
@@ -30,7 +30,8 @@ Theorem bytes_correct :
   M.find 5 (kv w) = Some (DBytes bytes_payload).
 Proof.
   unfold run_top, sample_bytes, bytes_payload, init_world.
-  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval].
+  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval
+       match_pat push_env fold_left ascii_list_eqb Ascii.eqb].
   split.
   - reflexivity.
   - apply M.find_1, M.add_1. reflexivity.
@@ -43,7 +44,8 @@ Lemma bytes_correct_inhabited : exists w,
 Proof.
   eexists.
   unfold run_top, sample_bytes, bytes_payload, init_world.
-  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval].
+  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval
+       match_pat push_env fold_left ascii_list_eqb Ascii.eqb].
   reflexivity.
 Qed.
 
@@ -55,9 +57,10 @@ Qed.
 Definition sample_bytes_wrong : tm :=
   Bind (Perform OPut [VInt 5; VBytes []])
        (Bind (Perform OGet [VInt 5])
-             (MatchOpt (VVar 0)
-                (Ret VNone)
-                (Ret (VVar 0)))).
+             (Match (VVar 0)
+                [(PNone, Ret VNone);
+                 (PSome, Ret (VVar 0))]
+                (Ret VNone))).
 
 (** The wrong program returns [Some (DBytes [])] (empty), not [Some (DBytes bytes_payload)].
     We prove the two outcomes differ, which demonstrates the spec is non-trivial. *)
@@ -66,7 +69,8 @@ Lemma bytes_wrong_outcome :
   outcome = ORet (DBytes []).
 Proof.
   unfold run_top, sample_bytes_wrong, init_world.
-  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval].
+  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval
+       match_pat push_env fold_left ascii_list_eqb Ascii.eqb].
   reflexivity.
 Qed.
 
@@ -85,7 +89,8 @@ Theorem bytes_wrong_rejected :
 Proof.
   (* Reduce sample_bytes_wrong to its concrete outcome [DBytes []], then discriminate. *)
   unfold run_top, sample_bytes_wrong, init_world.
-  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval].
+  cbn [run eval_val handle_kv map nth set_kv kv opt_to_dval
+       match_pat push_env fold_left ascii_list_eqb Ascii.eqb].
   intro H. discriminate H.
 Qed.
 

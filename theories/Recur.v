@@ -35,9 +35,11 @@ Lemma incr0_present : forall c w,
   o = ORet DUnit /\ M.find 0 w'.(kv) = Some (DInt (Z.succ c)).
 Proof.
   intros c w H. unfold incr_at.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv kv].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv kv
+       match_pat push_env fold_left].
   rewrite H.
-  cbn [opt_to_dval run eval_val map nth handle_kv set_kv kv].
+  cbn [opt_to_dval run eval_val map nth handle_kv set_kv kv
+       match_pat push_env fold_left].
   split; [ reflexivity | apply find_add_same ].
 Qed.
 
@@ -47,9 +49,11 @@ Lemma incr0_absent : forall w,
   o = ORet DUnit /\ M.find 0 w'.(kv) = Some (DInt 1).
 Proof.
   intros w H. unfold incr_at.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv kv].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv kv
+       match_pat push_env fold_left].
   rewrite H.
-  cbn [opt_to_dval run eval_val map nth handle_kv set_kv kv].
+  cbn [opt_to_dval run eval_val map nth handle_kv set_kv kv
+       match_pat push_env fold_left].
   split; [ reflexivity | apply find_add_same ].
 Qed.
 

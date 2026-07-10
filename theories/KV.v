@@ -73,15 +73,18 @@ Theorem incr_correct : forall k, verifies (incr_at k) (incr_spec k).
 Proof.
   intros k s Hpre.
   unfold verifies, incr_at, incr_spec, cur in *.
-  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hpre |- *.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left] in Hpre |- *.
   destruct (M.find k s) as [d|] eqn:Hf.
   - (* present: pre forces d = DInt z; both write succ of the stored value *)
     destruct d as [| | z | | | | |]; try contradiction;
-      cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv];
+      cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+           match_pat push_env fold_left];
       (split; [ rewrite find_add_same; reflexivity
               | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
   - (* absent: counter starts at 0, becomes 1 = Z.succ 0 *)
-    cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv];
+    cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+         match_pat push_env fold_left];
     (split; [ rewrite find_add_same; reflexivity
             | intros k' Hk'; rewrite add_neq_o by congruence; reflexivity ]).
 Qed.
@@ -99,8 +102,9 @@ Qed.
     vacuous, this negation would be unprovable. *)
 Definition incr_wrong (k : Z) : tm :=
   Bind (Perform OGet [VInt k])
-       (MatchOpt (VVar 0)
-          (Perform OPut [VInt k; VZero])
+       (Match (VVar 0)
+          [(PNone, Perform OPut [VInt k; VZero]);
+           (PSome, Perform OPut [VInt k; VZero])]
           (Perform OPut [VInt k; VZero])).
 
 Theorem incr_wrong_rejected : ~ verifies (incr_wrong 0) (incr_spec 0).
@@ -108,9 +112,11 @@ Proof.
   intro Hv. unfold verifies, incr_wrong, incr_spec, cur in Hv.
   specialize (Hv (M.empty dval)).
   (* From the empty store the precondition holds, so the postcondition must hold too. *)
-  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left] in Hv.
   rewrite empty_o in Hv.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left] in Hv.
   specialize (Hv I).
   (* the wrong impl wrote 0, but the spec's value clause demands succ 0 = 1 *)
   destruct Hv as [Hval _].
@@ -123,19 +129,22 @@ Qed.
     frame clause is load-bearing — without it, [incr_clobber] would pass (audit finding 2). *)
 Definition incr_clobber (k : Z) : tm :=
   Bind (Perform OGet [VInt k])
-       (MatchOpt (VVar 0)
-          (Bind (Perform OPut [VInt k; VSucc VZero]) (Perform ODelete [VInt (k + 1)]))
-          (Bind (Perform OPut [VInt k; VSucc (VVar 0)]) (Perform ODelete [VInt (k + 1)]))).
+       (Match (VVar 0)
+          [(PNone, Bind (Perform OPut [VInt k; VSucc VZero]) (Perform ODelete [VInt (k + 1)]));
+           (PSome, Bind (Perform OPut [VInt k; VSucc (VVar 0)]) (Perform ODelete [VInt (k + 1)]))]
+          (Bind (Perform OPut [VInt k; VSucc VZero]) (Perform ODelete [VInt (k + 1)]))).
 
 Theorem incr_clobber_rejected : ~ verifies (incr_clobber 0) (incr_spec 0).
 Proof.
   intro Hv. unfold verifies, incr_clobber, incr_spec, cur in Hv.
   (* A store where the neighbour key 1 holds a value the clobber will wrongly delete. *)
   specialize (Hv (M.add 1 (DInt 5) (M.empty dval))).
-  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
+  cbn [pre post run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left] in Hv.
   (* find 0 (add 1 5 empty) = None, so the precondition holds. *)
   rewrite add_neq_o in Hv by congruence. rewrite empty_o in Hv.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv] in Hv.
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left] in Hv.
   specialize (Hv I).
   destruct Hv as [_ Hframe].
   (* the frame says key 1 is untouched, but the clobber deleted it *)

@@ -26,9 +26,11 @@ Definition run_cache (initc : state) : option dval :=
 Lemma run_cache_miss : run_cache (M.empty dval) = Some (DInt 1).
 Proof.
   unfold run_cache, sample_cache.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite empty_o.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite find_add_same; reflexivity.
 Qed.
 
@@ -36,9 +38,11 @@ Qed.
 Lemma run_cache_hit : run_cache (M.add 0 (DInt 1) (M.empty dval)) = Some (DInt 1).
 Proof.
   unfold run_cache, sample_cache.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite find_add_same.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite find_add_same; reflexivity.
 Qed.
 
@@ -54,9 +58,11 @@ Theorem run_cache_uses_value :
   run_cache (M.add 0 (DInt 99) (M.empty dval)) = Some (DInt 99).
 Proof.
   unfold run_cache, sample_cache.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite find_add_same.
-  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache].
+  cbn [run eval_val map nth opt_to_dval handle_kv set_kv set_cache kv cache
+       match_pat push_env fold_left].
   rewrite find_add_same; reflexivity.
 Qed.
 

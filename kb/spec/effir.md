@@ -1,17 +1,18 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v1 grammar, typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R2 grammar, typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-10
-depends-on: [adr-0001-first-order-ast, effect-signatures]
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy]
 ---
 # Spec — EffIR (the first-order effect IR)
 
 > ⚠ **Slice-1 status:** the built subset differs — `VZero`/`VSucc` instead of `VPrim (list val)`,
-> `MatchOpt` instead of general `Match`, no `typecheck_ir.ml`. See [[slice1-status]].
+> no `typecheck_ir.ml`. IR v2 R2 (2026-07-10): general `Match` is implemented; `MatchOpt`
+> is removed. See [[adr-0008-general-match]].
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -50,17 +51,28 @@ error ([[error-taxonomy]]).
 tm ::= Ret val                       (* pure result *)
      | Bind tm tm                     (* x <- t1 ;; t2 ; t2's context has one extra binder (de Bruijn 0 = x) *)
      | Perform op (list val)          (* trigger an effect operation with value arguments *)
-     | Match val (list branch)        (* scrutinee is a val; each branch binds its pattern's vars, body is a tm *)
+     | Match val (list (pat * tm)) tm (* depth-1 general match: scrutinee, ordered branches, mandatory default *)
+     | Repeat nat tm                  (* bounded loop: run body n times *)
 ```
 `op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
 return types are fixed by that declaration.
 
-### Branches / patterns (v1, finite set)
-`branch` patterns are shallow and cover their scrutinee type exactly:
-- `option`: `PNone => tm` and `PSome => tm` (the latter binds one var).
-- `bool`: `PTrue => tm`, `PFalse => tm`.
-- `pair`: `PPair => tm` (binds two vars).
-Match must be **exhaustive and non-redundant** for the scrutinee's `ty` — checked by the IR typechecker.
+### Patterns (`pat`) — IR v2 R2 (adr-0008-general-match)
+```
+pat ::= PUnit | PBool b | PInt z | PBytes bs   (* literals — 0 binders, matched by equality *)
+      | PNone                                   (* 0 binders *)
+      | PSome                                   (* 1 binder: de Bruijn 0 = payload *)
+      | PPair                                   (* 2 binders: db0 = second component, db1 = first component *)
+```
+Semantics: evaluate the scrutinee; try branches in order (**first-match-wins**); the first matching
+branch runs its body with bound payloads pushed left-to-right (last payload = de Bruijn 0); the
+**mandatory default arm** runs on no match, making Match total without a typechecker.
+
+Binder convention for PPair: `match_pat PPair (DPair a b) = Some [a; b]`; `push_env` pushes `[a; b]`
+left-to-right, so db0 = b (second, last pushed), db1 = a (first).
+
+No nesting of patterns; no PVar/PWild (the default arm covers wildcards).
+Match need not be exhaustive — the default arm handles all unmatched cases.
 
 ## Binding discipline
 De Bruijn indices throughout. `Bind t1 t2` extends the context by one for `t2`. `Match` branches extend the

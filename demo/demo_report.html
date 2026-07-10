@@ -58,7 +58,7 @@ Proof. vm_compute. repeat split. Qed.</pre>
   <pre>let demo_prog () = (let v0 = (Env.ask ()) in
   (let v1 = (Trace.emit v0) in
   (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Z.of_string "0")) in
-  (match v2 with Rval.None -&gt; (Kv.put (Z.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | Rval.Some v3 -&gt; (Kv.put (Z.of_string "0") (match v3 with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; raise Rval.Stuck))) done) in
+  (let _s3 = v2 in (match _s3 with Rval.None -&gt; (Kv.put (Z.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (match _s3 with Rval.Some v3 -&gt; (Kv.put (Z.of_string "0") (match v3 with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (Kv.put (Z.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck))))))) done) in
   (Kv.put (Z.of_string "9") v0))))
 </pre>
   <p class="mut"><b>Where are the effects?</b> <code>Env.ask</code> / <code>Trace.emit</code> /

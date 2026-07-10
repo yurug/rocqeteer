@@ -1,10 +1,10 @@
 ---
 id: codegen
 type: spec
-summary: rocq-eff-codegen lowers an extracted EffIR value to direct-style OCaml 5 by erasing the monad (Bind→let, Perform→effect call, Match→match), emitting effect declarations, deep handlers, and an .mli, with deterministic formatting and loud failure on unsupported constructs.
+summary: rocq-eff-codegen lowers an extracted EffIR value to direct-style OCaml 5 by erasing the monad (Bind→let, Perform→effect call, Match→chained match/if), emitting effect declarations, deep handlers, and an .mli, with deterministic formatting and loud failure on unsupported constructs.
 domain: spec
-last-updated: 2026-07-08
-depends-on: [effir, effect-signatures, adr-0002-extraction-bridge]
+last-updated: 2026-07-10
+depends-on: [effir, effect-signatures, adr-0002-extraction-bridge, adr-0008-general-match]
 related: [reference-semantics, runtime-manifest, error-taxonomy, ext-ocaml5-effects]
 refines: []
 ---
@@ -30,12 +30,26 @@ EffIR                         OCaml
 Ret v                         compile_val v
 Bind t1 t2                    let x = compile_tm t1 in compile_tm t2   (x = de Bruijn 0 of t2)
 Perform (E,Op) [a;b]          E_effect.op (compile_val a) (compile_val b)
-Match v [branches]            match compile_val v with | ... -> ...
+Match v branches default      let _sN = compile_val v in <chain>
+                                where <chain> = first branch wrapping all subsequent ones,
+                                ending at compile_tm default.
+                              Constructor branch: (match _sN with PAT -> body | _ -> NEXT)
+                              Literal branch: (if Rval.equal _sN LIT then body else NEXT)
 VVar n                        the bound name for de Bruijn n (alpha-named on emit)
 VInt z | VBool b | VUnit      literal
 VSome v | VNone | VPair a b   Some (..) | None | (.., ..)
 VPrim p [args]                <manifest OCaml symbol for p> (compile_val args...)
 ```
+
+### Match chaining scheme (adr-0008 §Decision 4)
+Each branch is compiled independently with a `next` fallback string. Branches are folded
+right-to-left so the first branch in the list wraps the innermost chain. The scrutinee is
+let-bound once (`_sN` where N = current env depth) to avoid re-evaluation.
+
+PPair binder convention: `emit_branch` names the pair components as `name_fst` (depth N)
+and `name_snd` (depth N+1); the extended env is `[name_snd; name_fst; ...env...]`, giving
+db0 = `name_snd` (second component) and db1 = `name_fst` (first component), mirroring
+the `push_env` convention in `theories/EffIR.v`.
 Each top-level EffIR definition becomes one OCaml `let name a1 … an = compile_tm body`. The result is plain
 direct-style OCaml — effect operations look like ordinary function calls; their interpretation is supplied
 by the handler installed around the entrypoint.

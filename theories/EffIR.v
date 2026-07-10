@@ -1,4 +1,4 @@
-(** * EffIR — first-order effect IR (slice-1 subset) and its KV reference semantics.
+(** * EffIR — first-order effect IR (v2, R2: general Match) and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
     and that the codegen lowers (after extraction to an OCaml ADT). Keeping one
@@ -6,14 +6,32 @@
     the program run" — see kb/architecture/decisions/adr-0001-first-order-ast.md and
     kb/spec/effir.md.
 
-    Slice-1 scope (kb/plan.md): the effect is KV (Get/Put/Delete); values are concrete
-    Z; the only "prims" are zero/succ; the only match form is on [option] (MatchOpt).
-    General prims, recursion, and other effects are deferred (kb/spec/effir.md "out of
-    scope"). *)
+    IR v2 R2 (2026-07-10, adr-0008-general-match): [MatchOpt] is replaced by the
+    general [Match] form with depth-1 patterns, mandatory default arm, first-match-wins
+    semantics, and no typechecker assumption for totality. *)
 
-From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String.
+From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
 Local Open Scope Z_scope.
+
+(** Boolean equality on [ascii], avoiding the Stdlib [Ascii.eqb] which can create
+    extraction issues when [Bool] is opened in the generated code. We compare the eight
+    bits directly via [Bool.eqb]. *)
+Definition ascii_eqb (a b : ascii) : bool :=
+  match a, b with
+  | Ascii a0 a1 a2 a3 a4 a5 a6 a7,
+    Ascii b0 b1 b2 b3 b4 b5 b6 b7 =>
+      Bool.eqb a0 b0 && Bool.eqb a1 b1 && Bool.eqb a2 b2 && Bool.eqb a3 b3
+   && Bool.eqb a4 b4 && Bool.eqb a5 b5 && Bool.eqb a6 b6 && Bool.eqb a7 b7
+  end.
+
+(** Boolean equality on [list ascii], used by [match_pat] for [PBytes] matching. *)
+Fixpoint ascii_list_eqb (xs ys : list ascii) : bool :=
+  match xs, ys with
+  | [], []             => true
+  | x :: xs', y :: ys' => ascii_eqb x y && ascii_list_eqb xs' ys'
+  | _, _               => false
+  end.
 
 (** A Z-keyed finite map is the reference KV state. FMapAVL gives sorted [elements],
     which is exactly the order-independent observable the differential test compares
@@ -57,15 +75,63 @@ Inductive op : Type :=
     This is what lets [Bind] short-circuit on [OThrow] (the Error effect). *)
 Inductive outcome : Type := ORet (v : dval) | OErr (e : dval).
 
+(** ** Depth-1 patterns for the general [Match] form (adr-0008-general-match).
+    Literal patterns bind 0 variables; constructor patterns bind their payloads.
+
+    Binder convention (canonical de Bruijn assignment):
+      [match_pat] returns payloads in the order they appear in the pattern.
+      The interpreter pushes them onto the environment left-to-right (first payload pushed
+      first, last payload pushed last), so de Bruijn 0 = last pushed = last payload.
+      Concretely:
+        PSome  : binds 1 variable; de Bruijn 0 = the wrapped value.
+        PPair  : binds 2 variables; push first then second, so
+                   de Bruijn 0 = second component (last pushed),
+                   de Bruijn 1 = first component.
+      Literal patterns (PUnit/PBool/PInt/PBytes) bind 0 variables: no new binders. *)
+Inductive pat : Type :=
+| PUnit  : pat
+| PBool  : bool -> pat
+| PInt   : Z -> pat
+| PBytes : list ascii -> pat
+| PNone  : pat
+| PSome  : pat           (** binds 1: de Bruijn 0 = payload *)
+| PPair  : pat.          (** binds 2: de Bruijn 0 = second, de Bruijn 1 = first *)
+
+(** [match_pat p d] tests whether [d] matches pattern [p].
+    On success it returns [Some payloads] where [payloads] is the list of sub-values
+    bound by [p] in the order they appear in the pattern (first component first for PPair).
+    The interpreter pushes them in that order, so the last element in [payloads] lands at
+    de Bruijn 0. *)
+Definition match_pat (p : pat) (d : dval) : option (list dval) :=
+  match p, d with
+  | PUnit,     DUnit      => Some []
+  | PBool b,   DBool b'   => if Bool.eqb b b' then Some [] else None
+  | PInt z,    DInt z'    => if Z.eqb z z' then Some [] else None
+  | PBytes bs, DBytes bs' => if ascii_list_eqb bs bs' then Some [] else None
+  | PNone,     DNone      => Some []
+  | PSome,     DSome x    => Some [x]
+  | PPair,     DPair a b  => Some [a; b]
+  | _, _                  => None
+  end.
+
+(** Push a list of values onto the environment left-to-right.
+    After [push_env vs env], de Bruijn 0 = last element of [vs], which is the last payload
+    returned by [match_pat]. *)
+Definition push_env (vs : list dval) (env : list dval) : list dval :=
+  List.fold_left (fun acc v => v :: acc) vs env.
+
 (** ** Effectful computations. [Bind t1 t2] binds the result of [t1] at de Bruijn 0 in
-    [t2]; [MatchOpt] is the slice-1 match form (scrutinee is an [option]; the [some]
-    branch binds the payload at de Bruijn 0). *)
+    [t2]; [Match scrutinee branches default] is the general IR v2 match form:
+    first-match-wins over [branches], falling through to [default] on no match. *)
 Inductive tm : Type :=
-| Ret      : val -> tm
-| Bind     : tm -> tm -> tm
-| Perform  : op -> list val -> tm
-| MatchOpt : val -> tm -> tm -> tm
-| Repeat   : nat -> tm -> tm.   (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
+| Ret     : val -> tm
+| Bind    : tm -> tm -> tm
+| Perform : op -> list val -> tm
+| Match   : val -> list (pat * tm) -> tm -> tm
+           (** [Match scrutinee branches default]: evaluate [scrutinee], try each branch
+               in order; the first matching branch runs its body with bound payloads pushed
+               left-to-right (last payload = de Bruijn 0); [default] runs on no match. *)
+| Repeat  : nat -> tm -> tm.   (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
 
 (** ** Pure-value evaluation in a de Bruijn environment. Total: out-of-scope vars and
     type errors yield [Dstuck]. *)
@@ -145,12 +211,21 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
                      end
       | _      => let '(r, s') := handle_kv o vs w.(kv) in (ORet r, set_kv w s')
       end
-  | MatchOpt scrut none some =>
-      match eval_val env scrut with
-      | DNone   => run env none w
-      | DSome x => run (x :: env) some w
-      | _       => (ORet Dstuck, w)
-      end
+  | Match scrut branches default =>
+      let d := eval_val env scrut in
+      (* Nested fix over the branch list — each branch body is a structural sub-component
+         of the [Match] constructor, so the outer fixpoint stays structurally guarded. *)
+      (fix try_branches (bs : list (pat * tm)) {struct bs} : outcome * world :=
+         match bs with
+         | []           => run env default w    (* no branch matched: run the default *)
+         | (p, body) :: rest =>
+             match match_pat p d with
+             | Some payloads =>
+                 (* Push payloads left-to-right; last payload = de Bruijn 0. *)
+                 run (push_env payloads env) body w
+             | None => try_branches rest        (* pattern mismatch: try next branch *)
+             end
+         end) branches
   | Repeat n body =>
       (* run [body] [n] times, threading the world; an abort stops the loop. The inner
          [loop] recurses on the fuel [m]; the calls to [run env body] are on a strict
@@ -181,12 +256,14 @@ Definition observe_full (c : dval) (s : state) (t : tm)
   let '(r, w) := run [] t (mkWorld s c [] (M.empty dval)) in (r, M.elements w.(kv), rev w.(trace)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
-    [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x). *)
+    [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x).
+    Migrated from MatchOpt to Match (adr-0008 §Decision 5). *)
 Definition incr_at (k : Z) : tm :=
   Bind (Perform OGet [VInt k])
-       (MatchOpt (VVar 0)
-          (Perform OPut [VInt k; VSucc VZero])
-          (Perform OPut [VInt k; VSucc (VVar 0)])).
+       (Match (VVar 0)
+          [(PNone, Perform OPut [VInt k; VSucc VZero]);
+           (PSome, Perform OPut [VInt k; VSucc (VVar 0)])]
+          (Perform OPut [VInt k; VSucc VZero])).
 
 (** The closed spike term used to validate the extraction->codegen bridge (Step 1). *)
 Definition prog0 : tm := incr_at 7.

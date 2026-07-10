@@ -33,7 +33,8 @@ Theorem sample_env_lands : forall c,
   o = ORet DUnit /\ M.find 1 w'.(kv) = Some (DInt c).
 Proof.
   intro c. unfold sample_env.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left].
   split; [ reflexivity | rewrite find_add_same; reflexivity ].
 Qed.
 
@@ -47,7 +48,8 @@ Theorem sample_env_wrong_ignores_ctx : forall c, c <> 0 ->
   M.find 1 w'.(kv) <> Some (DInt c).
 Proof.
   intros c Hc. unfold sample_env_wrong.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv].
+  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
+       match_pat push_env fold_left].
   rewrite find_add_same. congruence.
 Qed.
 
