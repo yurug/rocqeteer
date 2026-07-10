@@ -88,5 +88,9 @@ Stuck, not a constructor); all value-carrying handlers (Kv/Env/Trace/Cache/Err) 
 suites + codegen + demo retyped to Rval.t; ZERO theories/ changes, make all + make demo green from clean.
 Design notes: Kv.get/Cache.get return Rval.t encoding option via opt_to_rval (mirrors reference
 opt_to_dval); emit_key separate from emit_val (keys stay Z.t); check_generated_fresh.sh now diffs source
-vs build artifact (same CI intent, no mid-dev chicken-and-egg). Next milestones: R1 VBytes (now a one-case
-addition), R2 general Match, R3 VPrim int64/bytes, R7 reply ADT — then verdis step 2 (proven RESP2 codec).
+vs build artifact (same CI intent, no mid-dev chicken-and-egg). R1 VBYTES DONE (2026-07-10, 4bdc26b): DBytes/VBytes through
+every layer; BytesVal.v proven axiom-free (+inhabitance+mutation); diff_bytes adversarial suite (NUL/CRLF/
+high-bytes/large classes); Runtime_Bytes_refines in the manifest; 8 proofs closed; make all+demo green.
+Next milestones (order): R2 general Match (DESIGN FIRST — pattern representation changes tm, breaks
+tm-inducting proofs; judgment-tier ADR before implementation), R3 VPrim (int64 checked arith + bytes ops +
+strict parse/print — verdis Q-INT-PARSE semantics), R7 reply ADT — then verdis step 2 (proven RESP2 codec).
