@@ -11,7 +11,7 @@ related: [adr-0001-first-order-ast, adr-0004-trust-model]
 # ADR-0007 — IR v2 sizing (from the VBytes spike, branch spike/vbytes)
 
 ## Context
-verdis (the first consumer; its `kb/external/rocqeteer.md` holds requirements R0–R10) needs bytes values,
+verdis (the first consumer; its KB file external/rocqeteer.md — in the verdis repo — holds requirements R0–R10) needs bytes values,
 general match, primitives, an expiring store, and a Time effect. Spike V (2026-07-10, commits c940d5d +
 3bb8ebf on `spike/vbytes`) measured the real cost before planning.
 
