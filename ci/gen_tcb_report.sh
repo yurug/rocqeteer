@@ -8,7 +8,8 @@ rocqv=$(rocq --version 2>/dev/null | head -1 || true)
 ocamlv=$(ocaml --version 2>/dev/null || true)
 dunev=$(dune --version 2>/dev/null || true)
 
-# Capture `Print Assumptions incr_correct` and `Print Assumptions bytes_correct`
+# Capture `Print Assumptions incr_correct`, `Print Assumptions bytes_correct`,
+# and `Print Assumptions parse_print_zero` (R3 prim round-trip)
 # via throwaway files compiled against the built theory (keeps the source tree clean).
 dune build theories/ >/dev/null 2>&1
 tmpd=$(mktemp -d)
@@ -18,9 +19,13 @@ assum=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tm
 printf 'From Rocqeteer Require Import BytesVal.\nPrint Assumptions bytes_correct.\n' > "$tmpd/CheckB.v"
 assum_bytes=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckB.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import Prims.\nPrint Assumptions parse_print_zero.\n' > "$tmpd/CheckP.v"
+assum_prims=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckP.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 [ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
+[ -z "$assum_prims" ] && assum_prims="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -41,6 +46,7 @@ echo
 echo "## Proof TCB"
 echo "- \`Print Assumptions incr_correct\`: **${assum}**"
 echo "- \`Print Assumptions bytes_correct\`: **${assum_bytes}**"
+echo "- \`Print Assumptions parse_print_zero\`: **${assum_prims}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -55,6 +61,16 @@ echo "|------|------|-------|--------------|"
 echo "| value_zero | primitive | Z.zero | diff_kv |"
 echo "| value_succ | primitive | Z.succ | diff_kv |"
 echo "| value_bytes | primitive | Rval.Bytes (Bytes.of_string ...) | diff_bytes |"
+echo "| prim_add_checked | primitive | Prims.prim_add_checked | diff_prims |"
+echo "| prim_sub_checked | primitive | Prims.prim_sub_checked | diff_prims |"
+echo "| prim_cmp_int | primitive | Prims.prim_cmp_int | diff_prims |"
+echo "| prim_eq_bytes | primitive | Prims.prim_eq_bytes | diff_prims |"
+echo "| prim_bytes_len | primitive | Prims.prim_bytes_len | diff_prims |"
+echo "| prim_bytes_concat | primitive | Prims.prim_bytes_concat | diff_prims |"
+echo "| prim_bytes_sub | primitive | Prims.prim_bytes_sub | diff_prims |"
+echo "| prim_parse_int64 | primitive | Prims.prim_parse_int64 | diff_prims |"
+echo "| prim_print_int | primitive | Prims.prim_print_int | diff_prims |"
+echo "| Runtime_Prims_refines | assumption (tcb-assumption) | apply_prim == Prims.prim_* | diff_prims (3000 pipeline states G1-G16 + direct per-prim pass, all 9 prims) |"
 echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
 echo "| Error (Throw) | effect | Rkv.Err | diff_err |"

@@ -1,18 +1,19 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R2 grammar, typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R3 grammar, typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-10
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match]
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry]
 refines: []
-related: [reference-semantics, codegen, error-taxonomy]
+related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 ---
 # Spec — EffIR (the first-order effect IR)
 
 > ⚠ **Slice-1 status:** the built subset differs — `VZero`/`VSucc` instead of `VPrim (list val)`,
 > no `typecheck_ir.ml`. IR v2 R2 (2026-07-10): general `Match` is implemented; `MatchOpt`
 > is removed. See [[adr-0008-general-match]].
+> IR v2 R3 (2026-07-10): `Prim` term + closed v1 prim set added. See [[adr-0009-vprim-registry]].
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -46,6 +47,34 @@ val ::= VVar n                       (* de Bruijn index into the binder context 
 `prim` names resolve through the runtime manifest ([[runtime-manifest]]); an unregistered prim is a codegen
 error ([[error-taxonomy]]).
 
+## Closed v1 primitive set (`prim`) — IR v2 R3 (adr-0009-vprim-registry)
+All prims are TOTAL. Fallible ones return **option-encoded dvals** (`DNone` / `DSome result`)
+so failure is handled by ordinary `Match`. Arity/shape mismatch also yields `DNone`.
+```
+PAddChecked   DInt a, DInt b  -> DSome (DInt (a+b)) if in [−2⁶³, 2⁶³−1], else DNone
+PSubChecked   DInt a, DInt b  -> DSome (DInt (a-b)) if in range, else DNone
+PCmpInt       DInt a, DInt b  -> DInt (−1 | 0 | 1)
+PEqBytes      DBytes a, DBytes b -> DBool (byte equality)
+PBytesLen     DBytes bs       -> DInt (length)
+PBytesConcat  DBytes a, DBytes b -> DBytes (a ++ b)
+PBytesSub     DBytes bs, DInt offset, DInt len -> DSome (DBytes slice) or DNone if OOB
+PParseInt64   DBytes bs       -> DSome (DInt z) under STRICT grammar (DP1-DP8), else DNone
+PPrintInt     DInt z          -> DSome (DBytes decimal) if in-range, DNone if not
+```
+**Strict parse grammar (DP1-DP8):**
+1. DP1: empty input → DNone
+2. DP2: leading '-' → set negative flag, advance
+3. DP3: digits empty after sign → DNone (bare '-')
+4. DP4: leading '0' → must be exactly "0"; more chars after → DNone ("-0" also → DNone)
+5. DP5: leading non-digit ('+', space, other) → DNone
+6. DP6: parse all remaining digits; non-digit in body → DNone
+7. DP7: apply sign
+8. DP8: range check [−2⁶³, 2⁶³−1] → DNone if outside
+
+Round-trip law: `apply_prim PPrintInt [DInt z] = DSome (DBytes bs)` implies
+`apply_prim PParseInt64 [DBytes bs] = DSome (DInt z)` for all in-range z.
+Proven at critical boundary values in `theories/Prims.v`.
+
 ## Effectful computations (`tm`)
 ```
 tm ::= Ret val                       (* pure result *)
@@ -53,7 +82,11 @@ tm ::= Ret val                       (* pure result *)
      | Perform op (list val)          (* trigger an effect operation with value arguments *)
      | Match val (list (pat * tm)) tm (* depth-1 general match: scrutinee, ordered branches, mandatory default *)
      | Repeat nat tm                  (* bounded loop: run body n times *)
+     | Prim prim (list val)           (* pure primitive step: evaluate args, apply prim, yield dval; world unchanged *)
 ```
+`Prim p args` is a pure step — it evaluates each arg as a val, applies `apply_prim p`, and yields the
+result as a dval. Bind sequences the result. Codegen emits `let vN = Prims.prim_<name> ... in`.
+
 `op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
 return types are fixed by that declaration.
 

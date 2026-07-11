@@ -8,8 +8,8 @@
 (rocq.extraction
  (prelude Extr)
  (extracted_files
-  Ascii.ml Ascii.mli BinInt.ml BinInt.mli BinNums.ml BinNums.mli BinPos.ml BinPos.mli
-  Bool.ml Bool.mli
+  Ascii.ml Ascii.mli BinInt.ml BinInt.mli BinNat.ml BinNat.mli BinNums.ml BinNums.mli
+  BinPos.ml BinPos.mli Bool.ml Bool.mli
   Datatypes.ml Datatypes.mli EffIR.ml EffIR.mli FMapAVL.ml FMapAVL.mli
   FMapList.ml FMapList.mli Int.ml Int.mli ListDef.ml ListDef.mli
   List.ml List.mli Nat.ml Nat.mli OrderedTypeEx.ml OrderedTypeEx.mli
@@ -23,6 +23,6 @@
 (library
  (name ref_extracted)
  (modules
-  Ascii BinInt BinNums BinPos Bool Datatypes EffIR FMapAVL FMapList Int
+  Ascii BinInt BinNat BinNums BinPos Bool Datatypes EffIR FMapAVL FMapList Int
   ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PosDef Samples Specif String)
  (flags (:standard -w -a)))

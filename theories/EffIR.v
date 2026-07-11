@@ -1,4 +1,4 @@
-(** * EffIR — first-order effect IR (v2, R2: general Match) and its reference semantics.
+(** * EffIR — first-order effect IR (v2, R3: VPrim primitive registry) and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
     and that the codegen lowers (after extraction to an OCaml ADT). Keeping one
@@ -8,7 +8,12 @@
 
     IR v2 R2 (2026-07-10, adr-0008-general-match): [MatchOpt] is replaced by the
     general [Match] form with depth-1 patterns, mandatory default arm, first-match-wins
-    semantics, and no typechecker assumption for totality. *)
+    semantics, and no typechecker assumption for totality.
+
+    IR v2 R3 (2026-07-10, adr-0009-vprim-registry): [Prim] term added — a closed first-order
+    set of total primitives. Fallible operations return option-encoded dvals (DNone / DSome).
+    The [prim] inductive enumerates the v1 set; [apply_prim] is the TOTAL reference
+    definition; [run] handles the [Prim] case by evaluating args then applying [apply_prim]. *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -71,6 +76,183 @@ Inductive val : Type :=
 Inductive op : Type :=
   | OGet | OPut | ODelete | OThrow | OAsk | OTrace | OCacheGet | OCachePut.
 
+(** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
+    All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that
+    the [Match] form handles failure — no new error machinery needed.
+    Arity or shape mismatch yields [DNone] (the R10 typechecker will reject such programs
+    statically; semantics stays total meanwhile). *)
+Inductive prim : Type :=
+| PAddChecked   (** DInt a, DInt b -> DSome (DInt (a+b)) if in-range, DNone otherwise *)
+| PSubChecked   (** DInt a, DInt b -> DSome (DInt (a-b)) if in-range, DNone otherwise *)
+| PCmpInt       (** DInt a, DInt b -> DInt (-1 | 0 | 1) *)
+| PEqBytes      (** DBytes a, DBytes b -> DBool (equality) *)
+| PBytesLen     (** DBytes bs -> DInt (length) *)
+| PBytesConcat  (** DBytes a, DBytes b -> DBytes (a ++ b) *)
+| PBytesSub     (** DBytes bs, DInt offset, DInt len -> DSome (DBytes slice) or DNone if OOB *)
+| PParseInt64   (** DBytes bs -> DSome (DInt z) under strict grammar, else DNone *)
+| PPrintInt.    (** DInt z -> DSome (DBytes decimal) if in-range, DNone if not *)
+
+(** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
+Definition int64_min : Z := -9223372036854775808.
+Definition int64_max : Z :=  9223372036854775807.
+
+Definition in_range (z : Z) : bool :=
+  Z.leb int64_min z && Z.leb z int64_max.
+
+(** [apply_add_checked a b]: Z addition, DNone if result leaves int64 range. *)
+Definition apply_add_checked (a b : Z) : dval :=
+  let r := a + b in
+  if in_range r then DSome (DInt r) else DNone.
+
+(** [apply_sub_checked a b]: Z subtraction, DNone if result leaves int64 range. *)
+Definition apply_sub_checked (a b : Z) : dval :=
+  let r := a - b in
+  if in_range r then DSome (DInt r) else DNone.
+
+(** [apply_cmp_int a b]: total three-way comparison; result is DInt −1, 0, or 1. *)
+Definition apply_cmp_int (a b : Z) : dval :=
+  match Z.compare a b with
+  | Lt => DInt (-1)
+  | Eq => DInt 0
+  | Gt => DInt 1
+  end.
+
+(** [is_digit c]: c is ASCII '0'–'9'. *)
+Definition is_digit (c : ascii) : bool :=
+  let n := N_of_ascii c in
+  (48 <=? n)%N && (n <=? 57)%N.
+
+(** [digit_val c]: the numeric value of ASCII digit c (0–9). *)
+Definition digit_val (c : ascii) : Z :=
+  Z.of_N (N_of_ascii c) - Z.of_N 48.
+
+(** [parse_digits cs acc]: fold a non-empty list of digit ascii chars into a Z value.
+    Accumulates left-to-right (most significant first). *)
+Fixpoint parse_digits (cs : list ascii) (acc : Z) : Z :=
+  match cs with
+  | []      => acc
+  | c :: rest => parse_digits rest (acc * 10 + digit_val c)
+  end.
+
+(** [apply_parse_int64 bs]: STRICT decimal parse (adr-0009 §Context + §Decision 3):
+    Grammar:
+      1. Optional leading '-'
+      2. "0" (exact) OR a nonzero digit followed by zero or more digits
+      3. ENTIRE input consumed (no trailing characters)
+      4. Result in [int64_min, int64_max]
+    Any violation → DNone. No '+', no whitespace, no leading zeros (except "0" itself),
+    no empty input, no non-digit characters.
+
+    Decision points implemented in order:
+      DP1: empty input  → DNone
+      DP2: leading '-'  → negate; advance; must have at least one digit after
+      DP3: digits empty → DNone (handles "-" with nothing after)
+      DP4: leading '0'  → must be exactly "0" (no "0123"); if more chars after → DNone
+      DP5: leading '+', space, or any non-digit → DNone
+      DP6: parse the digit sequence
+      DP7: sign applied
+      DP8: range check → DNone if outside int64 *)
+Definition apply_parse_int64 (bs : list ascii) : dval :=
+  match bs with
+  | [] => DNone  (* DP1: empty *)
+  | c0 :: rest =>
+      (* DP2: detect sign *)
+      let '(negative, digits) :=
+        if ascii_eqb c0 (ascii_of_N 45)  (* '-' *)
+        then (true, rest)
+        else (false, bs)
+      in
+      match digits with
+      | [] => DNone  (* DP3: '-' with nothing after *)
+      | d0 :: drest =>
+          if negb (is_digit d0) then DNone  (* DP5: leading non-digit (incl '+', space) *)
+          else
+            (* DP4: leading zero rule *)
+            if ascii_eqb d0 (ascii_of_N 48) (* '0' *)
+            then
+              match drest with
+              | [] =>
+                  (* exactly "0" or "-0"; strict grammar: "-0" is NOT a valid integer
+                     (it is not the canonical representation of zero). *)
+                  if negative then DNone
+                  else DSome (DInt 0)
+              | _ => DNone  (* "0..." with trailing chars → leading-zero violation *)
+              end
+            else
+              (* DP6: non-zero leading digit — parse all digits *)
+              if List.forallb is_digit drest
+              then
+                (* DP7: apply sign *)
+                let magnitude := parse_digits digits 0 in
+                let z := if negative then Z.opp magnitude else magnitude in
+                (* DP8: range check *)
+                if in_range z then DSome (DInt z) else DNone
+              else DNone  (* DP5: non-digit in the body *)
+      end
+  end.
+
+(** [print_digits_fuel fuel n acc]: extract decimal digits of [n : N] into [acc] (LSB-first)
+    using [fuel] steps. [fuel] = 20 suffices for all int64 values (at most 20 decimal digits).
+    When fuel = 0 or n = 0, returns [acc]. *)
+Fixpoint print_digits_fuel (fuel : nat) (n : N) (acc : list ascii) : list ascii :=
+  match fuel with
+  | O    => acc   (* fuel exhausted (never happens for in-range int64 with fuel=20) *)
+  | S f' =>
+      let d := (n mod 10)%N in
+      let c := ascii_of_N (48 + d) in
+      match (n / 10)%N with
+      | N0  => c :: acc           (* n < 10: last digit, MSB reached *)
+      | n'  => print_digits_fuel f' n' (c :: acc)
+      end
+  end.
+
+(** [apply_print_int z]: canonical decimal of an in-range DInt; DNone if out of range.
+    The print grammar is: optional '-' for negative; digits with no leading zeros; "0" for zero.
+    This is the INVERSE of apply_parse_int64's strict grammar.
+    Implemented without DecimalString (avoids extracting the Decimal/BinNat/DecimalString modules). *)
+Definition apply_print_int (z : Z) : dval :=
+  if negb (in_range z) then DNone
+  else
+    let digits : list ascii :=
+      match z with
+      | Z0     => [ascii_of_N 48]        (* "0" *)
+      | Zpos p =>
+          (* print_digits_fuel with fuel=20 (int64_max has 19 digits); result is MSB-first *)
+          print_digits_fuel 20 (Npos p) []
+      | Zneg p =>
+          ascii_of_N 45 :: print_digits_fuel 20 (Npos p) []
+      end
+    in
+    DSome (DBytes digits).
+
+(** [apply_bytes_sub bs offset len]: slice of [bs] starting at [offset] with [len] bytes.
+    Returns DSome (DBytes slice) if 0 <= offset, 0 <= len, offset + len <= |bs|; else DNone. *)
+Definition apply_bytes_sub (bs : list ascii) (offset len : Z) : dval :=
+  let n := Z.of_nat (List.length bs) in
+  if Z.ltb offset 0 || Z.ltb len 0 || Z.ltb n (offset + len)
+  then DNone
+  else
+    let drop_n := Z.to_nat offset in
+    let take_n := Z.to_nat len in
+    let dropped := List.skipn drop_n bs in
+    DSome (DBytes (List.firstn take_n dropped)).
+
+(** ** [apply_prim p args]: the TOTAL reference definition of each primitive.
+    Arity or shape mismatch → DNone (adr-0009 §Decision 2). *)
+Definition apply_prim (p : prim) (args : list dval) : dval :=
+  match p, args with
+  | PAddChecked,  [DInt a; DInt b]     => apply_add_checked a b
+  | PSubChecked,  [DInt a; DInt b]     => apply_sub_checked a b
+  | PCmpInt,      [DInt a; DInt b]     => apply_cmp_int a b
+  | PEqBytes,     [DBytes a; DBytes b] => DBool (ascii_list_eqb a b)
+  | PBytesLen,    [DBytes bs]          => DInt (Z.of_nat (List.length bs))
+  | PBytesConcat, [DBytes a; DBytes b] => DBytes (a ++ b)
+  | PBytesSub,    [DBytes bs; DInt off; DInt len] => apply_bytes_sub bs off len
+  | PParseInt64,  [DBytes bs]          => apply_parse_int64 bs
+  | PPrintInt,    [DInt z]             => apply_print_int z
+  | _, _                               => DNone   (* arity/shape mismatch *)
+  end.
+
 (** The result of running a computation: a normal value, or an error that aborted it.
     This is what lets [Bind] short-circuit on [OThrow] (the Error effect). *)
 Inductive outcome : Type := ORet (v : dval) | OErr (e : dval).
@@ -122,7 +304,9 @@ Definition push_env (vs : list dval) (env : list dval) : list dval :=
 
 (** ** Effectful computations. [Bind t1 t2] binds the result of [t1] at de Bruijn 0 in
     [t2]; [Match scrutinee branches default] is the general IR v2 match form:
-    first-match-wins over [branches], falling through to [default] on no match. *)
+    first-match-wins over [branches], falling through to [default] on no match.
+    [Prim p args] evaluates the [args] as vals and applies the primitive [p] — a pure step,
+    Ret-like, yielding the result as a dval (adr-0009-vprim-registry §Decision 1). *)
 Inductive tm : Type :=
 | Ret     : val -> tm
 | Bind    : tm -> tm -> tm
@@ -131,7 +315,11 @@ Inductive tm : Type :=
            (** [Match scrutinee branches default]: evaluate [scrutinee], try each branch
                in order; the first matching branch runs its body with bound payloads pushed
                left-to-right (last payload = de Bruijn 0); [default] runs on no match. *)
-| Repeat  : nat -> tm -> tm.   (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
+| Repeat  : nat -> tm -> tm    (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
+| Prim    : prim -> list val -> tm.
+           (** [Prim p args]: evaluate each val in [args], apply [apply_prim p], yield result.
+               Pure step (no world change); [Bind] sequences the result into the continuation.
+               Result is always a dval (may be DNone for mismatch/failure). *)
 
 (** ** Pure-value evaluation in a de Bruijn environment. Total: out-of-scope vars and
     type errors yield [Dstuck]. *)
@@ -238,6 +426,11 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
                    | (OErr e, w1) => (OErr e, w1)
                    end
          end) n w
+  | Prim p args =>
+      (* Evaluate each argument val in the current environment, apply the prim reference
+         definition, return the result — world is unchanged (pure step). *)
+      let vs := map (eval_val env) args in
+      (ORet (apply_prim p vs), w)
   end.
 
 (** Initial world: empty store, the given [c] context, empty trace, empty cache. *)

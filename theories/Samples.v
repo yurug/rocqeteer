@@ -148,6 +148,64 @@ Definition demo_prog : tm :=
              (Bind (Repeat 3 (incr_at 0))
                    (Perform OPut [VInt 9; VVar 2]))).
 
+(** PRIM SAMPLE (R3, adr-0009-vprim-registry): an "INCR-shaped" pipeline using PParseInt64 +
+    PAddChecked + PPrintInt.
+
+    Reads a DBytes context (OAsk), tries to parse it as a strict int64 (PParseInt64).
+    - On parse success (DSome z): tries to add 1 (PAddChecked).
+      - On add success (DSome z'): prints the result (PPrintInt); returns DBytes decimal.
+      - On add overflow (DNone): returns DBytes "OVF".
+    - On parse failure (DNone): returns DBytes "ERR".
+
+    ERR bytes: 'E','R','R' = 0x45, 0x52, 0x52.
+    OVF bytes: 'O','V','F' = 0x4F, 0x56, 0x46. *)
+Definition err_bytes : list ascii :=
+  [ Ascii.Ascii true  false true  false false false true  false  (* 'E' 0x45 *)
+  ; Ascii.Ascii false true  false false true  false true  false  (* 'R' 0x52 *)
+  ; Ascii.Ascii false true  false false true  false true  false  (* 'R' 0x52 *)
+  ].
+
+Definition ovf_bytes : list ascii :=
+  [ Ascii.Ascii true  true  true  true  false false true  false  (* 'O' 0x4F *)
+  ; Ascii.Ascii false true  true  false true  false true  false  (* 'V' 0x56 *)
+  ; Ascii.Ascii false true  true  false false false true  false  (* 'F' 0x46 *)
+  ].
+
+(** [sample_parse]: INCR-pipeline program using PParseInt64 + PAddChecked + PPrintInt.
+
+    Program structure (de Bruijn comments show live bindings at each point):
+      Bind (Perform OAsk [])              (* db0 = ctx bytes *)
+      (Bind (Prim PParseInt64 [VVar 0])   (* db0 = parse_result, db1 = ctx *)
+      (Match (VVar 0)
+         [(PNone, Ret (VBytes err_bytes)) (* parse failed *)
+          (PSome,                          (* db0 = parsed int, db1 = parse_result, db2 = ctx *)
+            Bind (Prim PAddChecked [VVar 0; VInt 1])  (* db0 = add_result, ... *)
+            (Match (VVar 0)
+               [(PNone, Ret (VBytes ovf_bytes))       (* overflow *)
+                (PSome,                                (* db0 = sum, ... *)
+                  Bind (Prim PPrintInt [VVar 0])       (* db0 = print_result *)
+                  (Match (VVar 0)
+                     [(PSome, Ret (VVar 0))]           (* db0 = printed bytes *)
+                     (Ret (VBytes err_bytes))))]        (* PPrintInt returned DNone (impossible for in-range) *)
+               (Ret (VBytes ovf_bytes))))]
+         (Ret (VBytes err_bytes)))). *)
+Definition sample_parse : tm :=
+  Bind (Perform OAsk [])
+  (Bind (Prim PParseInt64 [VVar 0])
+  (Match (VVar 0)
+     [(PNone, Ret (VBytes err_bytes));
+      (PSome,
+        Bind (Prim PAddChecked [VVar 0; VInt 1])
+        (Match (VVar 0)
+           [(PNone, Ret (VBytes ovf_bytes));
+            (PSome,
+              Bind (Prim PPrintInt [VVar 0])
+              (Match (VVar 0)
+                 [(PSome, Ret (VVar 0))]
+                 (Ret (VBytes err_bytes))))]
+           (Ret (VBytes ovf_bytes))))]
+     (Ret (VBytes err_bytes)))).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -167,4 +225,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_count"%string, sample_count);
     ("sample_bytes"%string, sample_bytes);
     ("sample_dispatch"%string, sample_dispatch);
+    ("sample_parse"%string, sample_parse);
     ("demo_prog"%string, demo_prog) ].
