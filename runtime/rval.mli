@@ -11,6 +11,8 @@
       DSome v        → Some v
       DPair (a, b)   → Pair (a, b)
       DBytes bs      → Bytes bs       (list ascii → OCaml bytes)
+      DTag (z, v)    → Tag (z, v)     (R7, adr-0010-structured-values)
+      DList vs       → List vs        (R7, adr-0010-structured-values; no elimination until R6)
       Dstuck         → (see Stuck exception below)
 
     [Dstuck] is represented as an exception rather than a constructor so that
@@ -27,6 +29,8 @@ type t =
   | Some  of t
   | Pair  of t * t
   | Bytes of bytes
+  | Tag   of Z.t * t
+  | List  of t list
 
 (** Raised by generated code when a value of an unexpected shape is
     encountered (e.g. [Z.succ] applied to a non-[Int] value).  Mirrors

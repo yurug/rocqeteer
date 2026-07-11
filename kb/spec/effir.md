@@ -1,10 +1,10 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R3 grammar, typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R7 grammar, typing, and what is in and out of scope.
 domain: spec
-last-updated: 2026-07-10
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry]
+last-updated: 2026-07-11
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 ---
@@ -14,6 +14,9 @@ related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 > no `typecheck_ir.ml`. IR v2 R2 (2026-07-10): general `Match` is implemented; `MatchOpt`
 > is removed. See [[adr-0008-general-match]].
 > IR v2 R3 (2026-07-10): `Prim` term + closed v1 prim set added. See [[adr-0009-vprim-registry]].
+> IR v2 R7 (2026-07-11): `DTag`/`VTag` (tagged sum injection) and `DList`/`VList` (finite
+> sequences) added to `dval`/`val`; `PTag` added to `pat`. No list elimination yet (R6).
+> See [[adr-0010-structured-values]].
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -43,6 +46,8 @@ val ::= VVar n                       (* de Bruijn index into the binder context 
       | VPair val val
       | VBytes (list ascii)          (* binary byte string; evals to DBytes (IR v2 R1, 2026-07-10) *)
       | VPrim prim (list val)        (* call a registered PURE native realizer, e.g. value_succ, value_zero *)
+      | VTag Z val                   (* tagged sum injection; evals to DTag z (eval_val env a) (IR v2 R7) *)
+      | VList (list val)             (* finite sequence; evals to DList (map (eval_val env) vs) (IR v2 R7) *)
 ```
 `prim` names resolve through the runtime manifest ([[runtime-manifest]]); an unregistered prim is a codegen
 error ([[error-taxonomy]]).
@@ -90,12 +95,13 @@ result as a dval. Bind sequences the result. Codegen emits `let vN = Prims.prim_
 `op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
 return types are fixed by that declaration.
 
-### Patterns (`pat`) — IR v2 R2 (adr-0008-general-match)
+### Patterns (`pat`) — IR v2 R2 (adr-0008-general-match), R7 (adr-0010-structured-values)
 ```
 pat ::= PUnit | PBool b | PInt z | PBytes bs   (* literals — 0 binders, matched by equality *)
       | PNone                                   (* 0 binders *)
       | PSome                                   (* 1 binder: de Bruijn 0 = payload *)
       | PPair                                   (* 2 binders: db0 = second component, db1 = first component *)
+      | PTag z                                  (* IR v2 R7: 1 binder: literal tag, db0 = payload *)
 ```
 Semantics: evaluate the scrutinee; try branches in order (**first-match-wins**); the first matching
 branch runs its body with bound payloads pushed left-to-right (last payload = de Bruijn 0); the
@@ -104,8 +110,20 @@ branch runs its body with bound payloads pushed left-to-right (last payload = de
 Binder convention for PPair: `match_pat PPair (DPair a b) = Some [a; b]`; `push_env` pushes `[a; b]`
 left-to-right, so db0 = b (second, last pushed), db1 = a (first).
 
+`PTag z` matches `DTag z' v` iff `Z.eqb z z'`, yielding `[v]` (one binder, same convention as `PSome`).
+
 No nesting of patterns; no PVar/PWild (the default arm covers wildcards).
 Match need not be exhaustive — the default arm handles all unmatched cases.
+
+## Structured values (R7, adr-0010-structured-values)
+`DTag`/`VTag` inject a Z-tagged sum (multi-payload constructors nest `DPair`; nullary payloads use
+`DUnit`); `DList`/`VList` build a finite sequence of values. Both are domain-neutral — no protocol-
+specific constructor lives in the IR; a consumer represents its own ADT by choosing tag numbers and
+composing `DPair`/`DTag`/`DList`. `DList` is constructible and observable (equality in `observe`/every
+diff comparator) but has **no IR-level elimination until R6** — a consumer traverses a decoded `DList`
+in its own pure Gallina after the boundary, not inside EffIR. `Match` dispatches on `DTag` via `PTag`;
+a mis-tagged or non-`DTag` scrutinee falls to the mandatory default arm (same posture as adr-0009's
+option-encoding: the R10 typechecker will later flag this statically).
 
 ## Binding discipline
 De Bruijn indices throughout. `Bind t1 t2` extends the context by one for `t2`. `Match` branches extend the

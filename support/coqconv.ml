@@ -49,6 +49,14 @@ let rec list_of_coq (l : 'a Datatypes.list) : 'a list =
   | Datatypes.Coq_nil -> []
   | Datatypes.Coq_cons (x, tl) -> x :: list_of_coq tl
 
+(* Reverse direction: build a Coq [list] from a native OCaml list. Used by [dval_of_rval]
+   to rebuild [DList] payloads (R7, adr-0010-structured-values) and by tests that construct
+   adversarial extracted values directly. *)
+let rec coq_list_of (l : 'a list) : 'a Datatypes.list =
+  match l with
+  | [] -> Datatypes.Coq_nil
+  | x :: xs -> Datatypes.Coq_cons (x, coq_list_of xs)
+
 (* Coq string/ascii (8 bits, LSB first) -> native OCaml string, for the program names in
    Samples.all_programs (the single-source program list the codegen iterates). *)
 module Ascii = Ref_extracted.Ascii
@@ -110,6 +118,8 @@ let rec rval_of_dval (d : E.dval) : R.t =
   | E.DSome v     -> R.Some (rval_of_dval v)
   | E.DPair (a,b) -> R.Pair (rval_of_dval a, rval_of_dval b)
   | E.DBytes al   -> R.Bytes (ascii_list_to_bytes al)
+  | E.DTag (z, v) -> R.Tag (z_of_coqz z, rval_of_dval v)
+  | E.DList ds    -> R.List (List.map rval_of_dval (list_of_coq ds))
   | E.Dstuck      -> raise R.Stuck
 
 let rec dval_of_rval (v : R.t) : E.dval =
@@ -122,3 +132,5 @@ let rec dval_of_rval (v : R.t) : E.dval =
   | R.Some v    -> E.DSome (dval_of_rval v)
   | R.Pair(a,b) -> E.DPair (dval_of_rval a, dval_of_rval b)
   | R.Bytes b   -> E.DBytes (bytes_to_ascii_list b)
+  | R.Tag (z,v) -> E.DTag (coqz_of_z z, dval_of_rval v)
+  | R.List vs   -> E.DList (coq_list_of (List.map dval_of_rval vs))

@@ -110,6 +110,32 @@ validated_by = ["diff_bytes (3000 states; B1-B7 byte classes: empty, NUL, CRLF, 
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[primitive."value_tag"]
+ocaml_symbol = "Rval.Tag (Z.t, Rval.t)"
+purity       = "pure"
+raises       = []
+pre          = "true"
+post         = "result = DTag z v (reference: VTag z a -> DTag z (eval_val env a))"
+tests        = ["diff_structval"]
+owner        = "yann"
+
+[primitive."value_list"]
+ocaml_symbol = "Rval.List (Rval.t list)"
+purity       = "pure"
+raises       = []
+pre          = "true"
+post         = "result = DList vs (reference: VList vs -> DList (map (eval_val env) vs))"
+tests        = ["diff_structval"]
+owner        = "yann"
+
+[assumption."Runtime_StructVal_refines"]
+statement    = "for all dval d built from DTag/DList (incl. nested), dval_of_rval (rval_of_dval d) = d; and for sample_tag_build/sample_tag_dispatch, observe(fast) = observe(reference)"
+reference    = "EffIR.DTag/DList, VTag/VList, PTag/match_pat (adr-0010-structured-values)"
+fast         = "Rval.Tag/Rval.List; codegen VTag/VList/PTag lowering; coqconv rval_of_dval/dval_of_rval"
+validated_by = ["diff_structval (2000 tag_build states + 3000 tag_dispatch states + 2000 fuzzed bridge round-trips; tag collisions, deep nesting, empty/large/mixed-shape lists, Z-boundary tags, coverage asserted)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 [realizer."Codec"]
 ocaml_module = "Rkv.Codec"
 kind         = "typed witness — GADT encoder/decoder over bytes; no unsafe casts"

@@ -2,7 +2,10 @@
     [ODelete], a top-level [Ret], multiple [Perform]s to distinct keys, a negative key
     literal, and depth-2 de Bruijn nesting. Consumed by the multi-program differential
     test (audit finding 1) so those lowering rules are covered, not dead. All are slice-1
-    typed (key = value = Z; values via VInt/VZero/VSucc). *)
+    typed (key = value = Z; values via VInt/VZero/VSucc).
+
+    R7 (adr-0010-structured-values) adds [sample_tag_build] (constructs DTag/DList) and
+    [sample_tag_dispatch] (matches on DTag via PTag). *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
@@ -206,6 +209,56 @@ Definition sample_parse : tm :=
            (Ret (VBytes ovf_bytes))))]
      (Ret (VBytes err_bytes)))).
 
+(** STRUCTURED VALUES (R7, adr-0010-structured-values): [sample_tag_build] computes a
+    checked-add payload (Prim PAddChecked) and wraps the result in a tagged sum (DTag);
+    the success tag additionally pairs the payload with a two-element, MIXED-SHAPE
+    [VList] (VInt, VBytes) so [DList] crosses codegen in the same commit as [DTag].
+
+    tag 0 = success, payload = DPair (DInt sum) (DList [DInt 42; DBytes tag_list_bytes])
+    tag 1 = overflow, payload = DBytes tag_err_bytes
+
+    Program structure (de Bruijn comments show live bindings at each point):
+      Bind (Perform OAsk [])                    (* db0 = ctx int *)
+      (Bind (Prim PAddChecked [VVar 0; VInt 1]) (* db0 = add_result, db1 = ctx *)
+      (Match (VVar 0)
+         [(PNone, Ret (VTag 1 (VBytes tag_err_bytes)))  (* overflow *)
+          (PSome,                                        (* db0 = sum, db1 = add_result, db2 = ctx *)
+            Ret (VPair (VTag 0 (VVar 0))
+                       (VList [VInt 42; VBytes tag_list_bytes])))]
+         (Ret (VTag 1 (VBytes tag_err_bytes))))).        (* dead default: PAddChecked is total,
+                                                             always DSome/DNone (adr-0009), same
+                                                             convention as sample_parse's. *) *)
+Definition tag_list_bytes : list ascii := list_ascii_of_string "LX".
+Definition tag_err_bytes  : list ascii := list_ascii_of_string "TBE".
+
+Definition sample_tag_build : tm :=
+  Bind (Perform OAsk [])
+  (Bind (Prim PAddChecked [VVar 0; VInt 1])
+  (Match (VVar 0)
+     [(PNone, Ret (VTag 1 (VBytes tag_err_bytes)));
+      (PSome, Ret (VPair (VTag 0 (VVar 0))
+                         (VList [VInt 42; VBytes tag_list_bytes])))]
+     (Ret (VTag 1 (VBytes tag_err_bytes))))).
+
+(** TAG DISPATCH (R7, anti-vacuity companion to [sample_tag_build]): dispatches on the
+    [DTag] constructor via depth-1 [PTag] patterns + the mandatory default arm (same
+    first-match-wins / default discipline as adr-0008, applied to the new pattern form
+    from adr-0010 §Decision 2). Three observably different outcomes:
+      PTag 0 -> tag_dispatch_a_bytes ("TG0")
+      PTag 1 -> tag_dispatch_b_bytes ("TG1")
+      default -> tag_dispatch_default_bytes ("TDF") — fires on a wrong tag (e.g. DTag 7 _)
+                 or on a context that is not a DTag at all (e.g. a bare DInt). *)
+Definition tag_dispatch_a_bytes       : list ascii := list_ascii_of_string "TG0".
+Definition tag_dispatch_b_bytes       : list ascii := list_ascii_of_string "TG1".
+Definition tag_dispatch_default_bytes : list ascii := list_ascii_of_string "TDF".
+
+Definition sample_tag_dispatch : tm :=
+  Bind (Perform OAsk [])
+       (Match (VVar 0)
+          [(PTag 0, Ret (VBytes tag_dispatch_a_bytes));
+           (PTag 1, Ret (VBytes tag_dispatch_b_bytes))]
+          (Ret (VBytes tag_dispatch_default_bytes))).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -226,4 +279,6 @@ Definition all_programs : list (string * tm) :=
     ("sample_bytes"%string, sample_bytes);
     ("sample_dispatch"%string, sample_dispatch);
     ("sample_parse"%string, sample_parse);
+    ("sample_tag_build"%string, sample_tag_build);
+    ("sample_tag_dispatch"%string, sample_tag_dispatch);
     ("demo_prog"%string, demo_prog) ].

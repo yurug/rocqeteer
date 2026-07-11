@@ -54,7 +54,7 @@ Theorem decode_encode : forall e v ts,
 Proof.
   induction e as [| e1 IH1 e2 IH2]; intros v ts H.
   - destruct v; try contradiction. reflexivity.
-  - destruct v as [| | | | | a b | |]; try contradiction.
+  - destruct v as [| | | | | a b | | | |]; try contradiction.
     destruct H as [H1 H2]. simpl encode. rewrite <- app_assoc. simpl decode.
     rewrite (IH1 a (encode e2 b ++ ts) H1).
     rewrite (IH2 b ts H2).

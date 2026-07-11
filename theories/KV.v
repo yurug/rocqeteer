@@ -77,7 +77,7 @@ Proof.
        match_pat push_env fold_left] in Hpre |- *.
   destruct (M.find k s) as [d|] eqn:Hf.
   - (* present: pre forces d = DInt z; both write succ of the stored value *)
-    destruct d as [| | z | | | | |]; try contradiction;
+    destruct d as [| | z | | | | | | |]; try contradiction;
       cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
            match_pat push_env fold_left];
       (split; [ rewrite find_add_same; reflexivity

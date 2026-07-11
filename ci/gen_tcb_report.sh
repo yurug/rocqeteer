@@ -22,10 +22,14 @@ assum_bytes=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd
 printf 'From Rocqeteer Require Import Prims.\nPrint Assumptions parse_print_zero.\n' > "$tmpd/CheckP.v"
 assum_prims=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckP.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import StructVal.\nPrint Assumptions tag_build_success.\n' > "$tmpd/CheckS.v"
+assum_structval=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckS.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 [ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
 [ -z "$assum_prims" ] && assum_prims="(capture failed)"
+[ -z "$assum_structval" ] && assum_structval="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -47,6 +51,7 @@ echo "## Proof TCB"
 echo "- \`Print Assumptions incr_correct\`: **${assum}**"
 echo "- \`Print Assumptions bytes_correct\`: **${assum_bytes}**"
 echo "- \`Print Assumptions parse_print_zero\`: **${assum_prims}**"
+echo "- \`Print Assumptions tag_build_success\`: **${assum_structval}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -71,6 +76,9 @@ echo "| prim_bytes_sub | primitive | Prims.prim_bytes_sub | diff_prims |"
 echo "| prim_parse_int64 | primitive | Prims.prim_parse_int64 | diff_prims |"
 echo "| prim_print_int | primitive | Prims.prim_print_int | diff_prims |"
 echo "| Runtime_Prims_refines | assumption (tcb-assumption) | apply_prim == Prims.prim_* | diff_prims (3000 pipeline states G1-G16 + direct per-prim pass, all 9 prims) |"
+echo "| value_tag | primitive | Rval.Tag (Z.t, Rval.t) | diff_structval |"
+echo "| value_list | primitive | Rval.List (Rval.t list) | diff_structval |"
+echo "| Runtime_StructVal_refines | assumption (tcb-assumption) | DTag/DList <-> Rval.Tag/Rval.List bridge + tag_build/tag_dispatch samples | diff_structval (2000+3000 sample states, 2000 fuzzed bridge round-trips, S1-S9 coverage) |"
 echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
 echo "| Error (Throw) | effect | Rkv.Err | diff_err |"

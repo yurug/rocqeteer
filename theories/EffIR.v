@@ -1,4 +1,4 @@
-(** * EffIR — first-order effect IR (v2, R3: VPrim primitive registry) and its reference semantics.
+(** * EffIR — first-order effect IR (v2, R7: structured values) and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
     and that the codegen lowers (after extraction to an OCaml ADT). Keeping one
@@ -13,7 +13,13 @@
     IR v2 R3 (2026-07-10, adr-0009-vprim-registry): [Prim] term added — a closed first-order
     set of total primitives. Fallible operations return option-encoded dvals (DNone / DSome).
     The [prim] inductive enumerates the v1 set; [apply_prim] is the TOTAL reference
-    definition; [run] handles the [Prim] case by evaluating args then applying [apply_prim]. *)
+    definition; [run] handles the [Prim] case by evaluating args then applying [apply_prim].
+
+    IR v2 R7 (2026-07-11, adr-0010-structured-values): [dval]/[val] gain [DTag]/[VTag]
+    (a Z-tagged sum injection) and [DList]/[VList] (a finite sequence of values); [pat]
+    gains [PTag] (depth-1, literal tag, binds the single payload). [DList] is
+    constructible and observable but has NO IR-level elimination until R6 — consumers
+    traverse it in their own pure Gallina after the boundary. *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -54,6 +60,8 @@ Inductive dval : Type :=
 | DSome  : dval -> dval
 | DPair  : dval -> dval -> dval
 | DBytes : list ascii -> dval
+| DTag   : Z -> dval -> dval      (** constructor-tagged value: sum injection (R7) *)
+| DList  : list dval -> dval      (** finite sequence of values (R7, no elimination until R6) *)
 | Dstuck : dval.
 
 (** ** Pure first-order expressions. [VVar] is a de Bruijn index.
@@ -68,7 +76,9 @@ Inductive val : Type :=
 | VPair : val -> val -> val
 | VZero   : val
 | VSucc   : val -> val
-| VBytes  : list ascii -> val.
+| VBytes  : list ascii -> val
+| VTag    : Z -> val -> val        (** builds a DTag (R7, adr-0010-structured-values) *)
+| VList   : list val -> val.       (** builds a DList (R7, adr-0010-structured-values) *)
 
 (** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env), [OTrace]
     (Trace), and [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
@@ -277,7 +287,8 @@ Inductive pat : Type :=
 | PBytes : list ascii -> pat
 | PNone  : pat
 | PSome  : pat           (** binds 1: de Bruijn 0 = payload *)
-| PPair  : pat.          (** binds 2: de Bruijn 0 = second, de Bruijn 1 = first *)
+| PPair  : pat           (** binds 2: de Bruijn 0 = second, de Bruijn 1 = first *)
+| PTag   : Z -> pat.     (** binds 1: literal tag; de Bruijn 0 = payload (R7, adr-0010) *)
 
 (** [match_pat p d] tests whether [d] matches pattern [p].
     On success it returns [Some payloads] where [payloads] is the list of sub-values
@@ -293,6 +304,7 @@ Definition match_pat (p : pat) (d : dval) : option (list dval) :=
   | PNone,     DNone      => Some []
   | PSome,     DSome x    => Some [x]
   | PPair,     DPair a b  => Some [a; b]
+  | PTag z,    DTag z' v  => if Z.eqb z z' then Some [v] else None
   | _, _                  => None
   end.
 
@@ -338,6 +350,17 @@ Fixpoint eval_val (env : list dval) (v : val) : dval :=
                 | _      => Dstuck
                 end
   | VBytes bs => DBytes bs
+  | VTag z a  => DTag z (eval_val env a)
+  | VList vs  =>
+      (* Nested fix over the value list — same technique as [run]'s Match branch-list
+         (adr-0008): each element of [vs] is a strict sub-component of [VList vs], which
+         is a strict sub-component of [v], so the outer fixpoint stays structurally
+         guarded even though the recursion goes through [List.map]-shaped code. *)
+      DList ((fix eval_list (xs : list val) : list dval :=
+                match xs with
+                | []       => []
+                | x :: xs' => eval_val env x :: eval_list xs'
+                end) vs)
   end.
 
 Definition state : Type := M.t dval.
