@@ -1,6 +1,6 @@
 # Session state — Rocqeteer
 
-_Last updated: 2026-07-10_
+_Last updated: 2026-07-11_
 
 ## What this project is
 A domain-independent trusted toolchain to use Rocq as a certified programming language: write effectful
@@ -76,7 +76,6 @@ Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 - Repo remote (private GitHub): create only when the user asks (E2). No push yet.
 - Mode B (monadic Gallina via MetaRocq), ITree bridge, GADT witnesses, Error/Env/Trace/Cache effects, codec
   pilot: all post-slice-1.
-</content>
 
 ## Interleaved consumer: verdis (R0 done 2026-07-10)
 verdis (~/work/dev/verdis) drives IR v2 (its kb/external/rocqeteer.md holds requirements R0-R10 per its
@@ -95,5 +94,18 @@ R2 GENERAL MATCH DONE (2026-07-10): ADR-0008 designed then implemented —
 pat (literals + PNone/PSome/PPair), first-match-wins + mandatory default, MatchOpt removed, 9 sites
 migrated, Dispatch.v (6 theorems incl. duplicate-branch first-match-wins observability), chained codegen,
 diff_dispatch suite. 14 proofs closed; make all + demo green.
-Next milestones: R3 VPrim (int64 checked arith with overflow signal + bytes ops + STRICT int64<->bytes
-parse/print matching verdis Q-INT-PARSE/Q-INT-OVER quirks), R7 reply ADT — then verdis step 2.
+R3 VPRIM DONE (2026-07-11, 0640bbf): ADR-0009 implemented — prim inductive (9 prims), TOTAL apply_prim
+(mismatch -> DNone), strict int64 parse/print DP1-DP8 ("-0" rejected, matches verdis Q-INT-PARSE),
+Prim term as a pure run step; theories/Prims.v 30+ closed theorems (round-trip at 0/±1/max/min,
+per-class rejection lemmas, sample_parse ERR/OVF paths, inhabitance, lenient mutant); realizers in
+runtime/prims.ml written from the Rocq defs; diff_prims = 3000 pipeline states (G1-G16, coverage
+asserted) + 2000-round direct apply_prim-vs-realizer pass over all 9 prims. All CI gates green
+post-commit; make demo green. Two fixes made during verification of the delegated implementation:
+(a) prim_bytes_sub bounds-checked in Z BEFORE Z.to_int (2^70 offset raised Z.Overflow — escaping
+exception from a raises=[] realizer); (b) PROOF-ENGINEERING TRAP, remember this: `eexists. split;
+vm_compute` runs vm_compute on the second conjunct while the witness evar is uninstantiated — VM
+compilation of the open term ballooned to 42 GB and the kernel OOM-killed the build. Always give
+explicit witnesses before vm_compute on multi-conjunct existential goals.
+Next milestones: R7 reply ADT (structured RESP-value type expressible in the IR) — then verdis step 2
+(proven RESP2 codec in the live path). Remaining v2 backlog: R4 expiring store, R5 Time, R6 lists,
+R8 message errors, R9 journal, R10 typechecker.
