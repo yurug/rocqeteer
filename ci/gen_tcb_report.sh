@@ -9,7 +9,7 @@ ocamlv=$(ocaml --version 2>/dev/null || true)
 dunev=$(dune --version 2>/dev/null || true)
 
 # Capture `Print Assumptions incr_correct`, `Print Assumptions bytes_correct`,
-# and `Print Assumptions parse_print_zero` (R3 prim round-trip)
+# and `Print Assumptions parse_print_roundtrip` (R3 prim round-trip, all in-range z)
 # via throwaway files compiled against the built theory (keeps the source tree clean).
 dune build theories/ >/dev/null 2>&1
 tmpd=$(mktemp -d)
@@ -19,7 +19,7 @@ assum=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tm
 printf 'From Rocqeteer Require Import BytesVal.\nPrint Assumptions bytes_correct.\n' > "$tmpd/CheckB.v"
 assum_bytes=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckB.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
-printf 'From Rocqeteer Require Import Prims.\nPrint Assumptions parse_print_zero.\n' > "$tmpd/CheckP.v"
+printf 'From Rocqeteer Require Import Prims.\nPrint Assumptions parse_print_roundtrip.\n' > "$tmpd/CheckP.v"
 assum_prims=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckP.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
 printf 'From Rocqeteer Require Import StructVal.\nPrint Assumptions tag_build_success.\n' > "$tmpd/CheckS.v"
@@ -50,7 +50,7 @@ echo
 echo "## Proof TCB"
 echo "- \`Print Assumptions incr_correct\`: **${assum}**"
 echo "- \`Print Assumptions bytes_correct\`: **${assum_bytes}**"
-echo "- \`Print Assumptions parse_print_zero\`: **${assum_prims}**"
+echo "- \`Print Assumptions parse_print_roundtrip\`: **${assum_prims}**"
 echo "- \`Print Assumptions tag_build_success\`: **${assum_structval}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"

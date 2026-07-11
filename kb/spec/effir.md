@@ -78,7 +78,8 @@ PPrintInt     DInt z          -> DSome (DBytes decimal) if in-range, DNone if no
 
 Round-trip law: `apply_prim PPrintInt [DInt z] = DSome (DBytes bs)` implies
 `apply_prim PParseInt64 [DBytes bs] = DSome (DInt z)` for all in-range z.
-Proven at critical boundary values in `theories/Prims.v`.
+Proven for ALL in-range z (`parse_print_roundtrip` in `theories/Prims.v`); the critical
+boundary values (0, ±1, int64_min/max) additionally have concrete vm_compute instances.
 
 ## Effectful computations (`tm`)
 ```
