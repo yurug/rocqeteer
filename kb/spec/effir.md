@@ -4,9 +4,10 @@ type: spec
 summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R9 grammar (append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-12
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination, adr-0013-journal-effect]
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination, adr-0013-journal-effect, adr-0014-wf-checker]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
+lint-max-lines: 210
 ---
 # Spec — EffIR (the first-order effect IR)
 
@@ -24,6 +25,11 @@ related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 > R9 (2026-07-12): **Journal** effect — `world.journal` + `OJournal` (append-only, write-only;
 > frame law + run-sequence fold lemma proven GENERALLY in `theories/Journal.v`) and the
 > `PDivFloor` prim ([[adr-0013-journal-effect]]).
+> R10 v1 (2026-07-12): PROVEN **well-formedness** checker `wf_tm` (de Bruijn scope through
+> Bind +1 / branch binders / Fold +2, exact op/prim arities; well-FORMED, never well-typed).
+> Soundness GENERAL in `theories/Wf.v` (`wf_no_scope_stuck`: no out-of-scope `VVar` branch,
+> ever; shape errors stay dynamic). Codegen wf-gates every program pre-emission with the
+> EXTRACTED checker, no opt-out; emission core = `rocqeteer.codegen` ([[adr-0014-wf-checker]]).
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates

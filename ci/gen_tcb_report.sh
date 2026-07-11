@@ -121,5 +121,6 @@ echo "- error programs (sample_throw/sample_guard5) under \`Err.run_error (Kv.ru
 echo
 echo "## Forbidden-API gates (CI)"
 echo "- no Obj.magic; Effect.perform confined to runtime/; no Admitted/admit/Axiom; no unregistered Extract Constant; generated file unedited."
+echo "- codegen wf-gates every program pre-emission with the EXTRACTED, PROVEN well-formedness checker (theories/Wf.v wf_tm, adr-0014 — scope/arity/binder counts; not a new realizer, no opt-out; ill-formed input fails the run loudly)."
 } > "$out"
 echo "wrote $out"

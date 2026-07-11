@@ -1,5 +1,16 @@
+; R10 v1 split (adr-0014-wf-checker): the emission core (emit_tm/emit_programs + the
+; wf gate + the header) is a public LIBRARY so consumers can lower THEIR extracted
+; all_programs; the rocqeteer-codegen executable is a thin driver over it iterating
+; rocqeteer's own Samples.all_programs.
+(library
+ (name rocqeteer_codegen)
+ (public_name rocqeteer.codegen)
+ (modules emit)
+ (libraries ref_extracted coqconv zarith))
+
 (executable
  (name codegen)
  (public_name rocqeteer-codegen)
  (package rocqeteer)
- (libraries ref_extracted coqconv zarith))
+ (modules codegen)
+ (libraries rocqeteer_codegen ref_extracted))
