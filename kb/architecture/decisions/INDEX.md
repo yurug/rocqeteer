@@ -21,6 +21,7 @@ related: [index, arch-overview]
 | `adr-0007-ir-v2-sizing.md` | IR v2 costs live in the runtime value universe, not proofs; dispatch ~12ns, no inlining | (spike-measured, 2026-07-10) |
 | `adr-0008-general-match.md` | Match replaces MatchOpt: depth-1 patterns, mandatory default, first-match-wins, chained codegen | R2 design (2026-07-10) |
 | `adr-0009-vprim-registry.md` | Total prims (option-encoded failure via Match), Rocq reference = spec, manifest-registered realizers | R3 design (2026-07-10) |
+| `adr-0010-structured-values.md` | DTag (Z-tagged sums, PTag pattern) + DList values (no elimination until R6) — first-order ADTs cross the IR boundary | R7 design (2026-07-11) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing
