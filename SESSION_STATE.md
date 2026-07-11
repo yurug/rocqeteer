@@ -114,6 +114,10 @@ coverage asserted). Design note: R7 stays domain-neutral — the consumer define
 in ITS theories with a proven of_dval/to_dval round-trip; RESP never enters rocqeteer. R7 also delivered
 R6's value half; R6 shrinks to list ELIMINATION only (pattern or bounded fold).
 
+GENERAL ROUND-TRIP (2026-07-11, 93ffc86): parse_print_roundtrip proven for ALL in-range z (closes the R3
+documented deferral; print_digits_fuel_spec fuel-induction + apply_parse_int64 walk lemmas; TCB report
+captures it). Downstream driver: verdis RESP2 codec's RInt case.
+
 **IR v2 verdis-step-2 precondition (R0+R1+R2+R3+R7) is COMPLETE.** Next: verdis step 2 (proven RESP2
 codec in the live path, in the verdis repo — pin bump to f0cf865 needed in verdis ci/rocqeteer.lock).
 Remaining v2 backlog (step-3 drivers): R4 expiring store, R5 Time, R6 list elimination, R8 message
