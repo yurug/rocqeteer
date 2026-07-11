@@ -106,6 +106,15 @@ exception from a raises=[] realizer); (b) PROOF-ENGINEERING TRAP, remember this:
 vm_compute` runs vm_compute on the second conjunct while the witness evar is uninstantiated — VM
 compilation of the open term ballooned to 42 GB and the kernel OOM-killed the build. Always give
 explicit witnesses before vm_compute on multi-conjunct existential goals.
-Next milestones: R7 reply ADT (structured RESP-value type expressible in the IR) — then verdis step 2
-(proven RESP2 codec in the live path). Remaining v2 backlog: R4 expiring store, R5 Time, R6 lists,
-R8 message errors, R9 journal, R10 typechecker.
+R7 STRUCTURED VALUES DONE (2026-07-11, ADR-0010 + f0cf865): DTag (Z-tagged sums) + DList (values only,
+NO elimination until R6) + PTag depth-1 pattern; Rval.Tag/List + coqconv bridge + codegen (when-guard
+literal-tag match); StructVal.v 11 closed theorems (tag-collision observability, swapped-tags mutant,
+wrong-tag/non-tag fall-to-default); diff_structval (5000 sample states + 2000 fuzzed bridge round-trips,
+coverage asserted). Design note: R7 stays domain-neutral — the consumer defines its ADT (e.g. RESP reply)
+in ITS theories with a proven of_dval/to_dval round-trip; RESP never enters rocqeteer. R7 also delivered
+R6's value half; R6 shrinks to list ELIMINATION only (pattern or bounded fold).
+
+**IR v2 verdis-step-2 precondition (R0+R1+R2+R3+R7) is COMPLETE.** Next: verdis step 2 (proven RESP2
+codec in the live path, in the verdis repo — pin bump to f0cf865 needed in verdis ci/rocqeteer.lock).
+Remaining v2 backlog (step-3 drivers): R4 expiring store, R5 Time, R6 list elimination, R8 message
+errors, R9 journal, R10 typechecker.
