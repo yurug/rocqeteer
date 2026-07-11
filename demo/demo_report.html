@@ -41,14 +41,14 @@
   <pre>Definition demo_prog : tm :=
   Bind (Perform OAsk [])
        (Bind (Perform OTrace [VVar 0])
-             (Bind (Repeat 3 (incr_at 0))
-                   (Perform OPut [VInt 9; VVar 2]))).</pre>
+             (Bind (Repeat 3 (incr_at key0))
+                   (Perform OPut [VBytes key9; VVar 2]))).</pre>
   <p class="mut">The machine-checked theorem (full functional result for the concrete run):</p>
   <pre>Theorem demo_correct :
-  let '(_, w) := run [] demo_prog (init_world (DInt 99)) in
-     M.find 0 w.(kv) = Some (DInt 3)          (* counter bumped 3 times *)
-  /\ M.find 9 w.(kv) = Some (DInt 99)          (* audit tag persisted *)
-  /\ rev w.(trace) = [DInt 99].                (* trace recorded the tag *)
+  let '(_, w) := run [] demo_prog (init_world (DInt 99) 0) in
+     M.find (string_of_list_ascii key0) w.(kv) = Some (DInt 3, None)   (* counter bumped 3× *)
+  /\ M.find (string_of_list_ascii key9) w.(kv) = Some (DInt 99, None)  (* audit tag persisted *)
+  /\ rev w.(trace) = [DInt 99].                                        (* trace recorded the tag *)
 Proof. vm_compute. repeat split. Qed.</pre>
   <p><span class="ok">&#10003;</span> <code>Print Assumptions demo_correct</code> = <b>"Closed under the global context"</b> — 0 axioms.</p>
  </div>
@@ -57,9 +57,9 @@ Proof. vm_compute. repeat split. Qed.</pre>
   <p class="mut">Direct style — the monad is erased; no interpreter, just effect calls and a native for-loop:</p>
   <pre>let demo_prog () = (let v0 = (Env.ask ()) in
   (let v1 = (Trace.emit v0) in
-  (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Z.of_string "0")) in
-  (let _s3 = v2 in (match _s3 with Rval.None -&gt; (Kv.put (Z.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (match _s3 with Rval.Some v3 -&gt; (Kv.put (Z.of_string "0") (match v3 with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (Kv.put (Z.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck))))))) done) in
-  (Kv.put (Z.of_string "9") v0))))
+  (let v2 = (for _i = 1 to 3 do ignore ((let v2 = (Kv.get (Bytes.of_string "0")) in
+  (let _s3 = v2 in (match _s3 with Rval.None -&gt; (Kv.put (Bytes.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (match _s3 with Rval.Some v3 -&gt; (Kv.put (Bytes.of_string "0") (match v3 with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck)) | _ -&gt; (Kv.put (Bytes.of_string "0") (match (Rval.Int Z.zero) with Rval.Int _z -&gt; Rval.Int (Z.succ _z) | _ -&gt; raise Rval.Stuck))))))) done) in
+  (Kv.put (Bytes.of_string "9") v0))))
 </pre>
   <p class="mut"><b>Where are the effects?</b> <code>Env.ask</code> / <code>Trace.emit</code> /
   <code>Kv.put</code> <i>are</i> the effect operations: each is a thin wrapper whose body is an

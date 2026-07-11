@@ -415,52 +415,52 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** Success path: input "42" → parse succeeds (z=42) → add 1 → z=43 → print → "43". *)
 Theorem sample_parse_success :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "42")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "42")) 0 sample_parse in
   o = ORet (DBytes (list_ascii_of_string "43")).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Error path: input "0123" (leading zero) → parse DNone → ERR branch. *)
 Theorem sample_parse_reject_leading_zero :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Error path: empty input → parse DNone → ERR branch. *)
 Theorem sample_parse_reject_empty :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Error path: "+5" → DNone → ERR branch. *)
 Theorem sample_parse_reject_plus :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "+5")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "+5")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Error path: " 5" → DNone → ERR branch. *)
 Theorem sample_parse_reject_space :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string " 5")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string " 5")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Error path: "-0" → DNone → ERR branch. *)
 Theorem sample_parse_reject_minus_zero :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "-0")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "-0")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Overflow path: int64_max → parse succeeds → add 1 → PAddChecked DNone → OVF branch. *)
 Theorem sample_parse_overflow :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "9223372036854775807")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "9223372036854775807")) 0 sample_parse in
   o = ORet (DBytes ovf_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Inhabitance of the success path: there exists a world where "42" gives "43". *)
 Lemma sample_parse_inhabited :
-  exists w, run_top (DBytes (list_ascii_of_string "42")) sample_parse =
+  exists w, run_top (DBytes (list_ascii_of_string "42")) 0 sample_parse =
             (ORet (DBytes (list_ascii_of_string "43")), w).
 Proof.
-  exists (snd (run_top (DBytes (list_ascii_of_string "42")) sample_parse)).
+  exists (snd (run_top (DBytes (list_ascii_of_string "42")) 0 sample_parse)).
   vm_compute. reflexivity.
 Qed.
 
@@ -475,21 +475,21 @@ Definition sample_parse_lenient : tm :=
 
 (** The lenient mutant ACCEPTS "0123" (returns "OK"). *)
 Theorem mutant_lenient_accepts_leading_zero :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) sample_parse_lenient in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse_lenient in
   o = ORet (DBytes (list_ascii_of_string "OK")).
 Proof. vm_compute. reflexivity. Qed.
 
 (** The strict parser REJECTS "0123" (returns err_bytes). *)
 Theorem strict_rejects_leading_zero :
-  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) sample_parse in
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse in
   o = ORet (DBytes err_bytes).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Therefore the two programs differ on "0123" — the mutant is observably different: *)
 Theorem mutant_differs_from_strict :
-  (let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) sample_parse_lenient in o)
+  (let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse_lenient in o)
   <>
-  (let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) sample_parse in o).
+  (let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse in o).
 Proof. vm_compute. intro H. discriminate H. Qed.
 
 (** Print Assumptions footprint — each must say "Closed under the global context". *)

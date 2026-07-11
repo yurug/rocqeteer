@@ -40,15 +40,22 @@ let indent s = s |> String.split_on_char '\n' |> List.map (fun l -> "    " ^ l) 
 (* --- the live computation --- *)
 let tag = 99
 
-(* reference: the extracted pure interpreter, from context [tag] and an empty store *)
+(* One instant for the whole demo: demo_prog is time-independent, so now = 0. The fast
+   side gets it through the single Time+Store composition point (adr-0011). *)
+let now = Z.zero
+
+(* reference: the extracted pure interpreter, from context [tag] and an empty store.
+   Keys are decimal byte strings since R4 ("0", "9"); parse them back for the display. *)
 let reference () : (int * int) list * int list =
   let z_of = Coqconv.z_of_coqz in
-  match E.observe_full (E.DInt (Coqconv.coqz_of_z (Z.of_int tag))) E.M.empty S.demo_prog with
+  match E.observe_full (E.DInt (Coqconv.coqz_of_z (Z.of_int tag)))
+          (Coqconv.coqz_of_z now) E.M.empty S.demo_prog with
   | D.Coq_pair (D.Coq_pair (_o, kvs), tr) ->
       let kv =
         Coqconv.list_of_coq kvs
         |> List.map (function
-             | D.Coq_pair (k, E.DInt v) -> (Z.to_int (z_of k), Z.to_int (z_of v))
+             | D.Coq_pair (k, D.Coq_pair (E.DInt v, _dl)) ->
+                 (int_of_string (Coqconv.string_of_coq k), Z.to_int (z_of v))
              | D.Coq_pair (_, _) -> failwith "non-int")
         |> List.sort compare
       in
@@ -58,21 +65,22 @@ let reference () : (int * int) list * int list =
       in
       (kv, trace)
 
-(* fast: the GENERATED OCaml run under the native Env / Trace / KV handler stack.
-   Context and trace events are now Rval.t; KV values are Rval.t.
-   We extract the underlying Z.t for the int display (demo_prog uses only integer values). *)
+(* fast: the GENERATED OCaml run under the native Env / Trace / Time+Store handler stack
+   (the Time and store handlers share ONE source — Runtime.with_store_and_time).
+   Context and trace events are Rval.t; store entries are (Rval.t * deadline option). *)
 let fast () : (int * int) list * int list =
   let kvtbl = Rkv.Kv.T.create 16 in
   let buf = ref [] in
   (* Context is Rval.Int tag; Env.run expects Rval.t *)
   Rkv.Env.run (Rkv.Rval.Int (Z.of_int tag)) (fun () ->
       Rkv.Trace.run buf (fun () ->
-          Rkv.Kv.run kvtbl (fun () -> ignore (Gen.demo_prog ()))));
+          Rkv.Runtime.with_store_and_time ~source:(fun () -> now) kvtbl
+            (fun () -> ignore (Gen.demo_prog ()))));
   let kv =
-    Rkv.Kv.observe kvtbl
-    |> List.map (fun (k, v) ->
-           match v with
-           | Rkv.Rval.Int z -> (Z.to_int k, Z.to_int z)
+    Rkv.Kv.observe ~now kvtbl
+    |> List.map (fun (k, e) ->
+           match e with
+           | Rkv.Rval.Int z, _dl -> (int_of_string (Bytes.to_string k), Z.to_int z)
            | _ -> failwith "demo: non-int KV value")
   in
   let trace =
@@ -151,7 +159,7 @@ let () =
   print_endline (dim "  each is a thin wrapper whose body performs the effect, confined to runtime/ (CI gate):");
   print_endline (indent wrapper_code);
 
-  step 3 "RUN under the native handler stack  (Env ∘ Trace ∘ KV)";
+  step 3 "RUN under the native handler stack  (Env ∘ Trace ∘ Time ∘ Store, one clock source)";
   Printf.printf "  context (audit tag) = %s\n" (yellow (string_of_int tag));
   Printf.printf "  final store : %s\n" (bold (show_kv fkv));
   Printf.printf "  audit trace : %s\n" (bold (show_tr ftr));

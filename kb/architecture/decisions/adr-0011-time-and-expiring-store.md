@@ -47,7 +47,11 @@ discipline unchanged.
    THIS section changes first.
 4. **One time source, injected.** `runtime/time.ml`: a handler whose source is a closure
    (`unit -> Z`, milliseconds); production wall clock by default, tests inject the harness-controlled
-   virtual clock (the SAME file the consumer's oracle reads via libfaketime). The store realizer
+   virtual clock (the SAME file the consumer's oracle reads via libfaketime).
+   **Dependency declaration (invariant 2):** the production source needs a wall clock, which the OCaml
+   stdlib does not provide (`Sys.time` is CPU time) — `base-unix` (shipped with the compiler
+   distribution, not a third-party package) joins the dependency budget for `runtime/` only, recorded
+   in the manifest and the TCB report alongside this ADR. The store realizer
    (`runtime/kv.ml`, generalized) obtains `now` from the SAME source instance — the runtime exposes one
    composition point that constructs both handlers from one source, and the manifest records
    "store-now ≡ time-now, single source" as a named assumption. Within one program run the fast side

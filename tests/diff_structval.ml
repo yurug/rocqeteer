@@ -36,7 +36,7 @@ let two_pow_62 = Z.of_string "4611686018427387904"
 (* --- part 1a: sample_tag_build, reference vs generated --------------------- *)
 
 let ref_tag_build (ctx : Z.t) : Rkv.Rval.t =
-  match E.run_top (E.DInt (Coqconv.coqz_of_z ctx)) S.sample_tag_build with
+  match E.run_top (E.DInt (Coqconv.coqz_of_z ctx)) (Coqconv.coqz_of_z Z.zero) S.sample_tag_build with
   | D.Coq_pair (E.ORet v, _) -> Coqconv.rval_of_dval v
   | D.Coq_pair (E.OErr e, _) ->
       failwith ("diff_structval tag_build ref error: " ^ Rkv.Rval.to_string (Coqconv.rval_of_dval e))
@@ -70,7 +70,7 @@ let () =
 (* --- part 1b: sample_tag_dispatch, reference vs generated ------------------ *)
 
 let ref_tag_dispatch (ctx : Rkv.Rval.t) : Rkv.Rval.t =
-  match E.run_top (Coqconv.dval_of_rval ctx) S.sample_tag_dispatch with
+  match E.run_top (Coqconv.dval_of_rval ctx) (Coqconv.coqz_of_z Z.zero) S.sample_tag_dispatch with
   | D.Coq_pair (E.ORet v, _) -> Coqconv.rval_of_dval v
   | D.Coq_pair (E.OErr e, _) ->
       failwith ("diff_structval tag_dispatch ref error: " ^ Rkv.Rval.to_string (Coqconv.rval_of_dval e))

@@ -1,4 +1,5 @@
-(** * EffIR — first-order effect IR (v2, R7: structured values) and its reference semantics.
+(** * EffIR — first-order effect IR (v2, R4+R5: Time + expiring bytes-keyed store)
+    and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
     and that the codegen lowers (after extraction to an OCaml ADT). Keeping one
@@ -19,7 +20,19 @@
     (a Z-tagged sum injection) and [DList]/[VList] (a finite sequence of values); [pat]
     gains [PTag] (depth-1, literal tag, binds the single payload). [DList] is
     constructible and observable but has NO IR-level elimination until R6 — consumers
-    traverse it in their own pure Gallina after the boundary. *)
+    traverse it in their own pure Gallina after the boundary.
+
+    IR v2 R4+R5 (2026-07-11, adr-0011-time-and-expiring-store): the Z-keyed KV is
+    REPLACED by an expiring, byte-string-keyed store — [world.kv] maps string keys
+    (converted from [list ascii] at the op boundary) to [(dval * option Z)] (value +
+    optional absolute deadline in ms). Liveness is the ONE rule: a binding [(v, Some d)]
+    is live iff [now_ms <= d] (alive AT the deadline, dead strictly after); [(v, None)]
+    is always live; expired bindings are semantically ABSENT for every op and for
+    [observe]. [world] gains [now_ms : Z], immutable within a run ([run_top] takes it);
+    the new [Time] effect exposes it via [ONow]. Ops: [OGet]/[OPut]/[ODelete] re-shaped
+    to bytes keys ([OPut] CLEARS any deadline; [ODelete] returns whether a LIVE binding
+    was removed), plus [OGetDeadline]/[OSetDeadline]. Cache keys migrate to bytes too
+    (one key discipline across the value-keyed effects). *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -44,10 +57,13 @@ Fixpoint ascii_list_eqb (xs ys : list ascii) : bool :=
   | _, _               => false
   end.
 
-(** A Z-keyed finite map is the reference KV state. FMapAVL gives sorted [elements],
-    which is exactly the order-independent observable the differential test compares
-    against the OCaml Hashtbl (kb/spec/reference-semantics.md). *)
-Module M := FMapAVL.Make(Z_as_OT).
+(** A STRING-keyed finite map is the reference store state (R4, adr-0011): keys are byte
+    strings, ordered by the stdlib [String_as_OT] (lexicographic on character codes — the
+    same order as OCaml's [Bytes.compare], so sorted [elements] is exactly the
+    order-independent observable the differential test compares against the OCaml Hashtbl;
+    kb/spec/reference-semantics.md). The [list ascii] byte payloads of [VBytes]/[DBytes]
+    convert to [string] keys at the op boundary via [string_of_list_ascii]. *)
+Module M := FMapAVL.Make(String_as_OT).
 
 (** ** Runtime values (dynamically typed).
     The interpreter is total; [Dstuck] marks an impossible/ill-typed case that proofs
@@ -80,11 +96,13 @@ Inductive val : Type :=
 | VTag    : Z -> val -> val        (** builds a DTag (R7, adr-0010-structured-values) *)
 | VList   : list val -> val.       (** builds a DList (R7, adr-0010-structured-values) *)
 
-(** ** Effect operations: KV (Get/Put/Delete), [OThrow] (Error), [OAsk] (Env), [OTrace]
+(** ** Effect operations: Store (Get/Put/Delete/GetDeadline/SetDeadline — the expiring
+    bytes-keyed store, R4), [ONow] (Time, R5), [OThrow] (Error), [OAsk] (Env), [OTrace]
     (Trace), and [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
-    is observationally invisible) — kb/spec/effect-signatures.md. *)
+    is observationally invisible) — kb/spec/effect-signatures.md, adr-0011. *)
 Inductive op : Type :=
-  | OGet | OPut | ODelete | OThrow | OAsk | OTrace | OCacheGet | OCachePut.
+  | OGet | OPut | ODelete | OGetDeadline | OSetDeadline | ONow
+  | OThrow | OAsk | OTrace | OCacheGet | OCachePut.
 
 (** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
     All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that
@@ -363,33 +381,100 @@ Fixpoint eval_val (env : list dval) (v : val) : dval :=
                 end) vs)
   end.
 
-Definition state : Type := M.t dval.
+(** ** Store state (R4, adr-0011): each binding carries the value and an OPTIONAL absolute
+    deadline in ms. The cache stays a plain [dval] map (no deadlines) — memoization has no
+    expiry semantics and is observationally invisible anyway. *)
+Definition entry : Type := (dval * option Z)%type.
+Definition state : Type := M.t entry.
+Definition memo  : Type := M.t dval.
 
 Definition opt_to_dval (o : option dval) : dval :=
   match o with Some v => DSome v | None => DNone end.
 
+(** ** Liveness — the ONE rule (adr-0011 §Decision 3, oracle-validated at the boundary:
+    12,500-case prediction-vs-oracle run, 0 mismatches — alive AT the exact deadline,
+    dead at deadline+1ms). A binding [(v, Some d)] is live iff [now <= d]; [(v, None)]
+    is always live. The mutant that uses [<] (dead AT the deadline) is observably
+    rejected in theories/TimeStore.v. *)
+Definition live (now : Z) (e : entry) : bool :=
+  match snd e with
+  | None   => true
+  | Some d => now <=? d
+  end.
+
+(** The LIVE view of a key: expired bindings are semantically absent for every op. *)
+Definition find_live (now : Z) (k : string) (s : state) : option entry :=
+  match M.find k s with
+  | Some e => if live now e then Some e else None
+  | None   => None
+  end.
+
 (** ** The [world]: ALL ambient effect state bundled into one record, so adding an effect
     adds a FIELD here rather than another parameter to [run] (the refactor that motivated
-    the Trace iteration). [kv] is the KV map, [ctx] the read-only Env context, [trace] the
-    Trace log stored newest-first (reversed to chronological by [observe]). *)
+    the Trace iteration). [kv] is the expiring store, [ctx] the read-only Env context,
+    [now_ms] the run's single instant (R5: immutable within a run — a program executes
+    atomically at one instant; the harness advances the clock BETWEEN runs, adr-0011
+    §Decision 1), [trace] the Trace log stored newest-first (reversed by [observe]). *)
 Record world : Type := mkWorld {
-  kv    : state;
-  ctx   : dval;
-  trace : list dval;
-  cache : state;       (* memo store; deliberately NOT exposed by [observe] *)
+  kv     : state;
+  ctx    : dval;
+  now_ms : Z;          (* the run's instant; read by ONow and by store liveness *)
+  trace  : list dval;
+  cache  : memo;       (* memo store; deliberately NOT exposed by [observe] *)
 }.
 
-Definition set_kv    (w : world) (m : state)     : world := mkWorld m w.(ctx) w.(trace) w.(cache).
-Definition set_trace (w : world) (l : list dval) : world := mkWorld w.(kv) w.(ctx) l w.(cache).
-Definition set_cache (w : world) (c : state)     : world := mkWorld w.(kv) w.(ctx) w.(trace) c.
+Definition set_kv    (w : world) (m : state)     : world :=
+  mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache).
+Definition set_trace (w : world) (l : list dval) : world :=
+  mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache).
+Definition set_cache (w : world) (c : memo)      : world :=
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c.
 
-(** ** Pure KV handler over the map: the reference semantics of the KV operations. *)
-Definition handle_kv (o : op) (args : list dval) (s : state) : dval * state :=
+(** ** Pure store handler over the map: the reference semantics of the store operations
+    (adr-0011 §Decision 2 — the op table, verbatim):
+      OGet         [k]     -> DNone | DSome v                       (live bindings only)
+      OPut         [k; v]  -> DUnit    stores v and CLEARS any deadline
+      ODelete      [k]     -> DBool    true iff a LIVE binding was removed
+      OGetDeadline [k]     -> DNone (no live k) | DSome DNone (live, no deadline)
+                              | DSome (DSome (DInt d))
+      OSetDeadline [k; DNone | DSome (DInt d)] -> DBool  true iff a live binding modified
+    Keys are byte strings ([DBytes]); arity/shape mismatch yields [Dstuck] (the existing
+    malformed-Perform-args convention). Whether an expired binding is physically removed
+    is unobservable ([ODelete] removes it; reads leave it) — lazy deletion freedom. *)
+Definition handle_store (now : Z) (o : op) (args : list dval) (s : state) : dval * state :=
   match o, args with
-  | OGet,    [DInt k]        => (opt_to_dval (M.find k s), s)
-  | OPut,    [DInt k; v]     => (DUnit, M.add k v s)
-  | ODelete, [DInt k]        => (DUnit, M.remove k s)
-  | _, _                     => (Dstuck, s)
+  | OGet, [DBytes kb] =>
+      (match find_live now (string_of_list_ascii kb) s with
+       | Some (v, _) => DSome v
+       | None        => DNone
+       end, s)
+  | OPut, [DBytes kb; v] =>
+      (DUnit, M.add (string_of_list_ascii kb) (v, None) s)
+  | ODelete, [DBytes kb] =>
+      let k := string_of_list_ascii kb in
+      (match find_live now k s with
+       | Some _ => DBool true
+       | None   => DBool false
+       end, M.remove k s)
+  | OGetDeadline, [DBytes kb] =>
+      (match find_live now (string_of_list_ascii kb) s with
+       | Some (_, None)   => DSome DNone
+       | Some (_, Some d) => DSome (DSome (DInt d))
+       | None             => DNone
+       end, s)
+  | OSetDeadline, [DBytes kb; DNone] =>
+      let k := string_of_list_ascii kb in
+      match find_live now k s with
+      | Some (v, _) => (DBool true, M.add k (v, None) s)
+      | None        => (DBool false, s)
+      end
+  | OSetDeadline, [DBytes kb; DSome (DInt d)] =>
+      let k := string_of_list_ascii kb in
+      match find_live now k s with
+      | Some (v, _) => (DBool true, M.add k (v, Some d) s)
+      | None        => (DBool false, s)
+      end
+  | _, _ => (Dstuck, s)
   end.
 
 (** ** The reference interpreter, threading one [world]. Structurally recursive on [t],
@@ -408,19 +493,22 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
       match o with
       | OThrow => (OErr (nth 0 vs Dstuck), w)
       | OAsk   => (ORet w.(ctx), w)
+      | ONow   => (ORet (DInt w.(now_ms)), w)   (* R5: the run's single instant *)
       | OTrace => match vs with
                   | [v] => (ORet DUnit, set_trace w (v :: w.(trace)))
                   | _   => (ORet Dstuck, w)
                   end
       | OCacheGet => match vs with
-                     | [DInt k] => (ORet (opt_to_dval (M.find k w.(cache))), w)
+                     | [DBytes kb] =>
+                         (ORet (opt_to_dval (M.find (string_of_list_ascii kb) w.(cache))), w)
                      | _        => (ORet Dstuck, w)
                      end
       | OCachePut => match vs with
-                     | [DInt k; v] => (ORet DUnit, set_cache w (M.add k v w.(cache)))
+                     | [DBytes kb; v] =>
+                         (ORet DUnit, set_cache w (M.add (string_of_list_ascii kb) v w.(cache)))
                      | _           => (ORet Dstuck, w)
                      end
-      | _      => let '(r, s') := handle_kv o vs w.(kv) in (ORet r, set_kv w s')
+      | _      => let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in (ORet r, set_kv w s')
       end
   | Match scrut branches default =>
       let d := eval_val env scrut in
@@ -456,30 +544,45 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
       (ORet (apply_prim p vs), w)
   end.
 
-(** Initial world: empty store, the given [c] context, empty trace, empty cache. *)
-Definition init_world (c : dval) : world := mkWorld (M.empty dval) c [] (M.empty dval).
+(** Initial world: empty store, the given [c] context, the run's instant [now], empty
+    trace, empty cache. *)
+Definition init_world (c : dval) (now : Z) : world :=
+  mkWorld (M.empty entry) c now [] (M.empty dval).
 
-Definition run_top (c : dval) (t : tm) : outcome * world := run [] t (init_world c).
+Definition run_top (c : dval) (now : Z) (t : tm) : outcome * world :=
+  run [] t (init_world c now).
 
-(** The observable: outcome + sorted key/value bindings + the trace in chronological order. *)
-Definition observe (c : dval) (t : tm) : outcome * list (Z * dval) * list dval :=
-  let '(r, w) := run_top c t in (r, M.elements w.(kv), rev w.(trace)).
+(** The LIVE bindings of a store at instant [now]: expired bindings are filtered out —
+    they are semantically absent from the observable too (adr-0011 §Decision 3). Each
+    surviving binding keeps its (value, optional deadline) entry. *)
+Definition live_elements (now : Z) (s : state) : list (string * entry) :=
+  List.filter (fun ke => live now (snd ke)) (M.elements s).
 
-(** Like [observe] but from a custom initial KV state [s] (and context [c]); the single
-    entry point the differential tests use (they seed a non-empty state). *)
-Definition observe_full (c : dval) (s : state) (t : tm)
-  : outcome * list (Z * dval) * list dval :=
-  let '(r, w) := run [] t (mkWorld s c [] (M.empty dval)) in (r, M.elements w.(kv), rev w.(trace)).
+(** The observable: outcome + sorted LIVE key/entry bindings + the chronological trace. *)
+Definition observe (c : dval) (now : Z) (t : tm)
+  : outcome * list (string * entry) * list dval :=
+  let '(r, w) := run_top c now t in (r, live_elements now w.(kv), rev w.(trace)).
+
+(** Like [observe] but from a custom initial store state [s] (and context [c], instant
+    [now]); the single entry point the differential tests use (they seed a non-empty
+    state, deadlines included). *)
+Definition observe_full (c : dval) (now : Z) (s : state) (t : tm)
+  : outcome * list (string * entry) * list dval :=
+  let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval)) in
+  (r, live_elements now w.(kv), rev w.(trace)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x).
-    Migrated from MatchOpt to Match (adr-0008 §Decision 5). *)
-Definition incr_at (k : Z) : tm :=
-  Bind (Perform OGet [VInt k])
+    Migrated from MatchOpt to Match (adr-0008 §Decision 5); keys are decimal byte
+    strings since R4 (adr-0011 §Decision 5). *)
+Definition incr_at (k : list ascii) : tm :=
+  Bind (Perform OGet [VBytes k])
        (Match (VVar 0)
-          [(PNone, Perform OPut [VInt k; VSucc VZero]);
-           (PSome, Perform OPut [VInt k; VSucc (VVar 0)])]
-          (Perform OPut [VInt k; VSucc VZero])).
+          [(PNone, Perform OPut [VBytes k; VSucc VZero]);
+           (PSome, Perform OPut [VBytes k; VSucc (VVar 0)])]
+          (Perform OPut [VBytes k; VSucc VZero])).
 
-(** The closed spike term used to validate the extraction->codegen bridge (Step 1). *)
-Definition prog0 : tm := incr_at 7.
+(** The closed spike term used to validate the extraction->codegen bridge (Step 1).
+    Key "7" = the decimal bytes of the original slice-1 integer key 7. *)
+Definition key7 : list ascii := list_ascii_of_string "7".
+Definition prog0 : tm := incr_at key7.

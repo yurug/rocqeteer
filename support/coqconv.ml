@@ -109,6 +109,37 @@ let bytes_to_ascii_list (b : bytes) : Ascii.ascii Datatypes.list =
   done;
   !result
 
+(** R4 (adr-0011) store-key bridge: the reference map is keyed by Coq [String.string]
+    (built from the [list ascii] op payloads via [string_of_list_ascii]); tests seed it
+    from native [bytes] keys and read sorted elements back. *)
+
+(** Native [bytes] -> Coq [String.string] (the reference map key). *)
+let coq_string_of_bytes (b : bytes) : Cstr.string =
+  let n = Bytes.length b in
+  let result = ref Cstr.EmptyString in
+  for i = n - 1 downto 0 do
+    let c = Char.code (Bytes.get b i) in
+    let bit k = if c land (1 lsl k) <> 0 then Datatypes.Coq_true else Datatypes.Coq_false in
+    let a = Ascii.Ascii (bit 0, bit 1, bit 2, bit 3, bit 4, bit 5, bit 6, bit 7) in
+    result := Cstr.String (a, !result)
+  done;
+  !result
+
+(** Coq [String.string] -> native [bytes] (reading reference observables back). *)
+let bytes_of_coq_string (s : Cstr.string) : bytes =
+  Bytes.of_string (string_of_coq s)
+
+(** Deadline bridge: native [Z.t option] <-> extracted [coq_Z option]. *)
+let coq_deadline_of (dl : Z.t option) : BinNums.coq_Z Datatypes.option =
+  match dl with
+  | None -> Datatypes.None
+  | Some d -> Datatypes.Some (coqz_of_z d)
+
+let deadline_of_coq (dl : BinNums.coq_Z Datatypes.option) : Z.t option =
+  match dl with
+  | Datatypes.None -> None
+  | Datatypes.Some d -> Some (z_of_coqz d)
+
 let rec rval_of_dval (d : E.dval) : R.t =
   match d with
   | E.DUnit       -> R.Unit
@@ -134,3 +165,14 @@ let rec dval_of_rval (v : R.t) : E.dval =
   | R.Bytes b   -> E.DBytes (bytes_to_ascii_list b)
   | R.Tag (z,v) -> E.DTag (coqz_of_z z, dval_of_rval v)
   | R.List vs   -> E.DList (coq_list_of (List.map dval_of_rval vs))
+
+(** Store-entry bridge (R4): a native runtime entry [(Rval.t * Z.t option)] <-> the
+    extracted reference [entry] = (dval, coq_Z option) prod. *)
+let coq_entry_of_rval ((v, dl) : R.t * Z.t option)
+  : (E.dval, BinNums.coq_Z Datatypes.option) Datatypes.prod =
+  Datatypes.Coq_pair (dval_of_rval v, coq_deadline_of dl)
+
+let rval_entry_of_coq (e : (E.dval, BinNums.coq_Z Datatypes.option) Datatypes.prod)
+  : R.t * Z.t option =
+  match e with
+  | Datatypes.Coq_pair (v, dl) -> (rval_of_dval v, deadline_of_coq dl)

@@ -1,10 +1,10 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2-R7 grammar, typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R4+R5 grammar (expiring bytes-keyed store + Time), typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-11
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values]
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 ---
@@ -17,6 +17,9 @@ related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 > IR v2 R7 (2026-07-11): `DTag`/`VTag` (tagged sum injection) and `DList`/`VList` (finite
 > sequences) added to `dval`/`val`; `PTag` added to `pat`. No list elimination yet (R6).
 > See [[adr-0010-structured-values]].
+> IR v2 R4+R5 (2026-07-11): the Z-keyed KV is REPLACED by an expiring **bytes-keyed store**
+> (per-binding optional deadline; live iff `now_ms <= d`), and `world` gains `now_ms` read
+> by the new `Time` effect (`ONow`). See [[adr-0011-time-and-expiring-store]].
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -95,6 +98,29 @@ result as a dval. Bind sequences the result. Codegen emits `let vN = Prims.prim_
 
 `op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
 return types are fixed by that declaration.
+
+### Ops and the world — v2 R4+R5 ([[adr-0011-time-and-expiring-store]])
+The `world` record bundles ALL ambient effect state: `kv` (the expiring store: a map from
+byte-string keys to `(dval * option Z)` — value + optional absolute deadline in ms),
+`ctx` (read-only Env context), `now_ms : Z` (the run's single instant, IMMUTABLE within a
+run — the harness advances the clock between runs), `trace` (newest-first log), and
+`cache` (bytes-keyed memo, kept out of `observe`). **Liveness is the ONE rule**: `(v, Some d)`
+is live iff `now_ms <= d` (alive AT the deadline, dead at d+1ms; oracle-validated,
+12,500 cases); `(v, None)` is always live; expired = absent for every op AND for `observe`
+(which filters by `now_ms`). Store op table (keys are `VBytes`; malformed args → `Dstuck`):
+```
+OGet         [k]     -> DNone | DSome v                       (live bindings only)
+OPut         [k; v]  -> DUnit    stores v and CLEARS any deadline
+ODelete      [k]     -> DBool    true iff a LIVE binding was removed
+OGetDeadline [k]     -> DNone (no live k) | DSome DNone (live, no deadline)
+                        | DSome (DSome (DInt d))
+OSetDeadline [k; VNone | VSome (VInt d)] -> DBool  true iff a live binding was modified
+ONow         []      -> DInt now_ms                            (Time; no clock advance in-IR)
+OThrow [e] · OAsk [] · OTrace [v] · OCacheGet [k] · OCachePut [k; v]   (unchanged)
+```
+TTL policy (rounding, negative-expire-deletes, reply codes) is consumer-side, NOT IR
+semantics. `run_top` takes `ctx` and `now`; proofs: `theories/TimeStore.v` (boundary +
+`<`-mutant rejection), `theories/KV.v` (`incr_correct` over the store, any instant).
 
 ### Patterns (`pat`) — IR v2 R2 (adr-0008-general-match), R7 (adr-0010-structured-values)
 ```

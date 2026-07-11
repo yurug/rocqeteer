@@ -3,25 +3,32 @@
     i.e. a throw aborts identically and commits exactly the pre-throw writes.
 
     This is the Error slice's P5: it checks the short-circuit semantics the KV-only diff
-    cannot (kb/spec/reference-semantics.md, kb/conventions/error-handling.md). *)
+    cannot (kb/spec/reference-semantics.md, kb/conventions/error-handling.md).
+
+    R4+R5 (adr-0011): keys are decimal byte strings; entries carry (value, deadline);
+    the fast side runs under Err ∘ Time ∘ Store (one time source). *)
 
 module E = Ref_extracted.EffIR
 module D = Ref_extracted.Datatypes
 module S = Ref_extracted.Samples
 module Gen = Generated.Prog0_generated
 
+let now = Z.zero
+let key_bytes (k : Z.t) : bytes = Bytes.of_string (Z.to_string k)
+
 (* An observation: the error outcome (None = returned normally; Some e = aborted) + state. *)
-type obs = { err : Rkv.Rval.t option; state : (Z.t * Rkv.Rval.t) list }
+type obs = { err : Rkv.Rval.t option; state : (bytes * (Rkv.Rval.t * Z.t option)) list }
 
 let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
   let m0 =
     List.fold_left
       (fun m (k, v) ->
-         E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
+         E.M.add (Coqconv.coq_string_of_bytes (key_bytes k))
+           (Coqconv.coq_entry_of_rval (Rkv.Rval.Int v, None)) m)
       E.M.empty pairs
   in
   let oc, bindings =
-    match E.observe_full E.DUnit m0 term with
+    match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 term with
     | D.Coq_pair (D.Coq_pair (o, bs), _tr) -> (o, bs)
   in
   let err =
@@ -33,21 +40,23 @@ let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
     Coqconv.list_of_coq bindings
     |> List.map (fun p ->
            match p with
-           | D.Coq_pair (k, v) -> (Coqconv.z_of_coqz k, Coqconv.rval_of_dval v))
-    |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
+           | D.Coq_pair (k, e) ->
+               (Coqconv.bytes_of_coq_string k, Coqconv.rval_entry_of_coq e))
+    |> List.sort (fun (a, _) (b, _) -> Bytes.compare a b)
   in
   { err; state }
 
 let fast_obs (fn : unit -> unit) (pairs : (Z.t * Z.t) list) : obs =
   let table = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k (Rkv.Rval.Int v)) pairs;
-  (* run_error catches a throw; the KV handler interprets state up to that point. *)
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace table (key_bytes k) (Rkv.Rval.Int v, None)) pairs;
+  (* run_error catches a throw; the store handler interprets state up to that point. *)
   let err =
-    match Rkv.Err.run_error (fun () -> Rkv.Kv.run table fn) with
+    match Rkv.Err.run_error (fun () ->
+        Rkv.Runtime.with_store_and_time ~source:(fun () -> now) table fn) with
     | Ok () -> None
     | Error e -> Some e
   in
-  { err; state = Rkv.Kv.observe table }
+  { err; state = Rkv.Kv.observe ~now table }
 
 let err_eq a b =
   match (a, b) with
@@ -55,10 +64,12 @@ let err_eq a b =
   | Some x, Some y -> Rkv.Rval.equal x y
   | _ -> false
 
+let entry_eq (v1, d1) (v2, d2) = Rkv.Rval.equal v1 v2 && Option.equal Z.equal d1 d2
+
 let state_eq a b =
   List.length a = List.length b
   && List.for_all2
-       (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Rkv.Rval.equal v1 v2)
+       (fun (k1, e1) (k2, e2) -> Bytes.equal k1 k2 && entry_eq e1 e2)
        a b
 
 let programs : (string * E.tm * (unit -> unit)) list =
@@ -72,9 +83,12 @@ let gen_val () = Z.of_int (Random.State.int rng 1000 - 500)
 let gen_state () =
   List.init (Random.State.int rng 8) (fun _ -> (gen_key (), gen_val ()))
 
+let show_entry (v, dl) =
+  Rkv.Rval.to_string v ^ (match dl with None -> "" | Some d -> "@" ^ Z.to_string d)
+
 let show l =
   "[" ^ String.concat "; "
-    (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Rkv.Rval.to_string v)) l)
+    (List.map (fun (k, e) -> Printf.sprintf "%s=%s" (Bytes.to_string k) (show_entry e)) l)
   ^ "]"
 let show_err = function
   | None   -> "ok"
@@ -93,9 +107,8 @@ let () =
           (if r.err = None then incr returned else incr threw);
         if not (err_eq r.err f.err && state_eq r.state f.state) then (
           incr fails;
-          Printf.printf "MISMATCH %s (RSEED=%d) state=%s\n  ref =(%s,%s)\n  fast=(%s,%s)\n"
+          Printf.printf "MISMATCH %s (RSEED=%d)\n  ref =(%s,%s)\n  fast=(%s,%s)\n"
             name seed
-            (show (List.map (fun (k,v) -> (k, Rkv.Rval.Int v)) pairs))
             (show_err r.err) (show r.state)
             (show_err f.err) (show f.state)))
       programs

@@ -23,7 +23,7 @@ module Gen = Generated.Prog0_generated
 (* Reference: run sample_dispatch with a Bytes context; extract the outcome. *)
 let ref_outcome (ctx_bytes : bytes) : Rkv.Rval.t =
   let coq_ctx = E.DBytes (Coqconv.bytes_to_ascii_list ctx_bytes) in
-  match E.run_top coq_ctx S.sample_dispatch with
+  match E.run_top coq_ctx (Coqconv.coqz_of_z Z.zero) S.sample_dispatch with
   | D.Coq_pair (E.ORet v, _) -> Coqconv.rval_of_dval v
   | D.Coq_pair (E.OErr e, _) ->
       failwith ("diff_dispatch ref error: " ^ Rkv.Rval.to_string (Coqconv.rval_of_dval e))

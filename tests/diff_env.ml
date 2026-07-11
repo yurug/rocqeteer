@@ -1,43 +1,57 @@
 (** Env-effect differential test: the read-only context flows identically through the
-    reference interpreter (the [ctx] parameter of [run]) and the fast side (the [Env.run]
-    handler wrapped around the KV handler). For [sample_env] (ask; put 1 := asked value),
-    key 1 must end up holding the context on both sides, over random ctx + initial state. *)
+    reference interpreter (the [ctx] field of [world]) and the fast side (the [Env.run]
+    handler wrapped around the Time+Store stack). For [sample_env] (ask; put "1" := asked
+    value), key "1" must end up holding the context on both sides, over random ctx +
+    initial state.
+
+    R4+R5 (adr-0011): keys are decimal byte strings; entries carry (value, deadline). *)
 
 module E = Ref_extracted.EffIR
 module D = Ref_extracted.Datatypes
 module S = Ref_extracted.Samples
 module Gen = Generated.Prog0_generated
 
-let ref_state (ctx : Z.t) (pairs : (Z.t * Z.t) list) : (Z.t * Rkv.Rval.t) list =
+let now = Z.zero
+let key_bytes (k : Z.t) : bytes = Bytes.of_string (Z.to_string k)
+let key1 = key_bytes Z.one
+
+let ref_state (ctx : Z.t) (pairs : (Z.t * Z.t) list)
+    : (bytes * (Rkv.Rval.t * Z.t option)) list =
   let m0 =
     List.fold_left
       (fun m (k, v) ->
-         E.M.add (Coqconv.coqz_of_z k) (E.DInt (Coqconv.coqz_of_z v)) m)
+         E.M.add (Coqconv.coq_string_of_bytes (key_bytes k))
+           (Coqconv.coq_entry_of_rval (Rkv.Rval.Int v, None)) m)
       E.M.empty pairs
   in
   let bindings =
-    match E.observe_full (E.DInt (Coqconv.coqz_of_z ctx)) m0 S.sample_env with
+    match E.observe_full (E.DInt (Coqconv.coqz_of_z ctx)) (Coqconv.coqz_of_z now) m0
+            S.sample_env with
     | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->
          match p with
-         | D.Coq_pair (k, v) -> (Coqconv.z_of_coqz k, Coqconv.rval_of_dval v))
-  |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
+         | D.Coq_pair (k, e) ->
+             (Coqconv.bytes_of_coq_string k, Coqconv.rval_entry_of_coq e))
+  |> List.sort (fun (a, _) (b, _) -> Bytes.compare a b)
 
-let fast_state (ctx : Z.t) (pairs : (Z.t * Z.t) list) : (Z.t * Rkv.Rval.t) list =
+let fast_state (ctx : Z.t) (pairs : (Z.t * Z.t) list)
+    : (bytes * (Rkv.Rval.t * Z.t option)) list =
   let table = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k (Rkv.Rval.Int v)) pairs;
-  (* Env handler outermost (Ask propagates out of the KV handler to it), KV handler inner.
-     Context is now Rval.t: wrap the Z.t ctx as Rval.Int. *)
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace table (key_bytes k) (Rkv.Rval.Int v, None)) pairs;
+  (* Env handler outermost (Ask propagates out of the Time+Store stack to it). *)
   Rkv.Env.run (Rkv.Rval.Int ctx) (fun () ->
-      Rkv.Kv.run table (fun () -> ignore (Gen.sample_env ())));
-  Rkv.Kv.observe table
+      Rkv.Runtime.with_store_and_time ~source:(fun () -> now) table
+        (fun () -> ignore (Gen.sample_env ())));
+  Rkv.Kv.observe ~now table
+
+let entry_eq (v1, d1) (v2, d2) = Rkv.Rval.equal v1 v2 && Option.equal Z.equal d1 d2
 
 let state_eq a b =
   List.length a = List.length b
   && List.for_all2
-       (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Rkv.Rval.equal v1 v2)
+       (fun (k1, e1) (k2, e2) -> Bytes.equal k1 k2 && entry_eq e1 e2)
        a b
 
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621
@@ -47,9 +61,12 @@ let gen_state () =
   List.init (Random.State.int rng 8)
     (fun _ -> (Z.of_int (Random.State.int rng 12 - 2), gen_z ()))
 
+let show_entry (v, dl) =
+  Rkv.Rval.to_string v ^ (match dl with None -> "" | Some d -> "@" ^ Z.to_string d)
+
 let show l =
   "[" ^ String.concat "; "
-    (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Rkv.Rval.to_string v)) l)
+    (List.map (fun (k, e) -> Printf.sprintf "%s=%s" (Bytes.to_string k) (show_entry e)) l)
   ^ "]"
 
 let () =
@@ -58,17 +75,16 @@ let () =
   for _ = 1 to n do
     let ctx = gen_z () and pairs = gen_state () in
     let r = ref_state ctx pairs and f = fast_state ctx pairs in
-    (* sanity: key 1 holds Rval.Int ctx on the reference side (the asked value flowed in) *)
+    (* sanity: key "1" holds (Int ctx, no deadline) on the reference side *)
     if List.exists
-         (fun (k, v) -> Z.equal k Z.one && Rkv.Rval.equal v (Rkv.Rval.Int ctx))
+         (fun (k, (v, dl)) ->
+            Bytes.equal k key1 && Rkv.Rval.equal v (Rkv.Rval.Int ctx) && dl = None)
          r
     then incr ctx_landed;
     if not (state_eq r f) then (
       incr fails;
-      Printf.printf "MISMATCH (RSEED=%d) ctx=%s state=%s\n  ref =%s\n  fast=%s\n"
-        seed (Z.to_string ctx)
-        (show (List.map (fun (k,v) -> (k, Rkv.Rval.Int v)) pairs))
-        (show r) (show f))
+      Printf.printf "MISMATCH (RSEED=%d) ctx=%s\n  ref =%s\n  fast=%s\n"
+        seed (Z.to_string ctx) (show r) (show f))
   done;
   Printf.printf "states=%d fails=%d | ctx-landed-at-key1=%d/%d\n" n !fails !ctx_landed n;
   if !fails = 0 && !ctx_landed = n then

@@ -25,11 +25,15 @@ assum_prims=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd
 printf 'From Rocqeteer Require Import StructVal.\nPrint Assumptions tag_build_success.\n' > "$tmpd/CheckS.v"
 assum_structval=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckS.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import TimeStore.\nPrint Assumptions alive_at_deadline.\n' > "$tmpd/CheckT.v"
+assum_timestore=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckT.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 [ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
 [ -z "$assum_prims" ] && assum_prims="(capture failed)"
 [ -z "$assum_structval" ] && assum_structval="(capture failed)"
+[ -z "$assum_timestore" ] && assum_timestore="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -52,6 +56,7 @@ echo "- \`Print Assumptions incr_correct\`: **${assum}**"
 echo "- \`Print Assumptions bytes_correct\`: **${assum_bytes}**"
 echo "- \`Print Assumptions parse_print_roundtrip\`: **${assum_prims}**"
 echo "- \`Print Assumptions tag_build_success\`: **${assum_structval}**"
+echo "- \`Print Assumptions alive_at_deadline\` (R4+R5 boundary, live iff now<=d): **${assum_timestore}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -79,8 +84,10 @@ echo "| Runtime_Prims_refines | assumption (tcb-assumption) | apply_prim == Prim
 echo "| value_tag | primitive | Rval.Tag (Z.t, Rval.t) | diff_structval |"
 echo "| value_list | primitive | Rval.List (Rval.t list) | diff_structval |"
 echo "| Runtime_StructVal_refines | assumption (tcb-assumption) | DTag/DList <-> Rval.Tag/Rval.List bridge + tag_build/tag_dispatch samples | diff_structval (2000+3000 sample states, 2000 fuzzed bridge round-trips, S1-S9 coverage) |"
-echo "| KV (Get/Put/Delete) | effect | Rkv.Kv | diff_test, diff_kv |"
-echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast | diff_test, diff_kv (5000 adversarial) |"
+echo "| Store (Get/Put/Delete/GetDeadline/SetDeadline; bytes keys, live iff now<=d) | effect | Rkv.Kv | diff_test, diff_kv, diff_store |"
+echo "| Time (Now; injectable source, wall clock default) | effect | Rkv.Time | diff_time |"
+echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast (live bindings, deadlines incl.) | diff_test, diff_kv (5000 adversarial), diff_store (3000; d-1/d/d+1 per key) |"
+echo "| Runtime_SingleTimeSource_refines | assumption (tcb-assumption) | store-now == time-now, one source instance; test source steps only between runs | diff_time (3000; reference-now == fast-source-now per run) |"
 echo "| Error (Throw) | effect | Rkv.Err | diff_err |"
 echo "| Runtime_Error_refines | assumption (tcb-assumption) | abort outcome+state | diff_err (3000) |"
 echo "| Env (Ask) | effect | Rkv.Env | diff_env |"

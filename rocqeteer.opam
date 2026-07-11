@@ -12,6 +12,7 @@ depends: [
   "ocaml" {>= "5.4"}
   "dune" {>= "3.23"}
   "zarith"
+  "base-unix"
   "odoc" {with-doc}
 ]
 build: [

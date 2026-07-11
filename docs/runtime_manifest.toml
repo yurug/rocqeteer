@@ -20,13 +20,30 @@ post         = "result = Z.succ x (reference: DInt (Z.succ z))"
 tests        = ["diff_kv"]
 owner        = "yann"
 
-[effect."KV"]
+[effect."Store"]
 ocaml_module = "Rkv.Kv"
-ops          = ["Get", "Put", "Delete"]
-backend      = "Hashtbl(Z) + Effect.Deep handler, one-shot continue"
-key_type     = "Z (zarith)"
-value_type   = "Z (zarith)"
-tests        = ["diff_test", "diff_kv"]
+ops          = ["Get", "Put", "Delete", "GetDeadline", "SetDeadline"]
+backend      = "Hashtbl(bytes) of (Rval.t * deadline option) + Effect.Deep handler, one-shot continue; lazy physical deletion of expired bindings (unobservable)"
+key_type     = "bytes (byte strings; reference converts list ascii -> string keys)"
+value_type   = "Rval.t + optional absolute deadline (Z, ms)"
+deadline_semantics = "live iff now <= d (alive AT the deadline, dead at d+1ms); (v, None) never expires; Put CLEARS the deadline; Delete returns live-removal; expired = absent for every op and for observe. Boundary validated by the 12,500-case prediction-vs-oracle run (verdis O1, 0 mismatches) and re-asserted per key at d-1/d/d+1 by diff_store; the < mutant is rejected in theories/TimeStore.v"
+tests        = ["diff_test", "diff_kv", "diff_store"]
+owner        = "yann"
+
+[effect."Time"]
+ocaml_module = "Rkv.Time"
+ops          = ["Now"]
+backend      = "Effect.Deep handler resuming with a read of an INJECTABLE source closure (unit -> Z, ms); production default wall_clock_ms = Unix.gettimeofday * 1000 truncated (unix ships with the compiler — no new opam dep); tests inject a virtual clock stepped only BETWEEN runs"
+value_type   = "Z (ms since epoch; one instant per run)"
+tests        = ["diff_time"]
+owner        = "yann"
+
+[assumption."Runtime_SingleTimeSource_refines"]
+statement    = "store-now == time-now: the store handler and the Time handler read the SAME source instance (constructed together by Runtime.with_store_and_time, Time outermost); a test source steps only between runs, so both sides see one instant per run, matching the reference's immutable world.now_ms. Production wall clock is monotonic; cross-op drift within a run is outside the refinement statement (documented trust, adr-0011 §Decision 4)"
+reference    = "EffIR.world.now_ms (immutable per run; ONow -> DInt now_ms; liveness reads it)"
+fast         = "Runtime.with_store_and_time ~source: Time.run source ∘ Kv.run ~now:source"
+validated_by = ["diff_time (3000 runs; reference-now == fast-source-now asserted per run)", "diff_store (3000 states; store reads flow through the same source)"]
+review_label = "tcb-assumption"
 owner        = "yann"
 
 [effect."Error"]
@@ -81,7 +98,8 @@ owner        = "yann"
 ocaml_module = "Rkv.Cache"
 ops          = ["CGet", "CPut"]
 backend      = "Effect.Deep handler over a separate Hashtbl; never exposed by observe"
-value_type   = "Z (zarith)"
+key_type     = "bytes (one key discipline across value-keyed effects since R4)"
+value_type   = "Rval.t (no deadlines — memoization has no expiry semantics)"
 tests        = ["diff_cache"]
 owner        = "yann"
 
@@ -237,10 +255,10 @@ owner        = "yann"
 # development stays axiom-free (Print Assumptions incr_correct = "Closed under the global
 # context"). It is validated by the adversarial differential tests below.
 [assumption."Runtime_KV_refines"]
-statement    = "for all initial states, observe(fast(prog0)) = observe(reference(prog0))"
-reference    = "EffIR.run [] prog0 (the pure FMapAVL interpreter)"
-fast         = "Generated.Prog0_generated.prog0 under Rkv.Kv.run"
-observable   = "sorted (key,value) bindings, coq_Z<->zarith bridged"
-validated_by = ["diff_test", "diff_kv (5000 adversarial cases, T2/T4/T5/T7 covered)"]
+statement    = "for all initial store states (deadlines included) and every instant now, observe(fast(p)) = observe(reference(p)) — outcome and LIVE (key, value, deadline) bindings, expired filtered on both sides"
+reference    = "EffIR.run over the string-keyed FMapAVL store; handle_store + live (now <= d); live_elements filter"
+fast         = "generated code under Runtime.with_store_and_time (Time ∘ Kv.run ~now:source, one source)"
+observable   = "sorted (bytes key, (Rval.t, deadline option)) LIVE bindings, string<->bytes bridged"
+validated_by = ["diff_test", "diff_kv (5000 adversarial cases, T2/T4/T5/T7 covered)", "diff_store (3000 states, deadline boundaries d-1/d/d+1 per key, key collisions incl. NUL and shared prefixes)"]
 review_label = "tcb-assumption"
 owner        = "yann"

@@ -120,5 +120,23 @@ captures it). Downstream driver: verdis RESP2 codec's RInt case.
 
 **IR v2 verdis-step-2 precondition (R0+R1+R2+R3+R7) is COMPLETE.** Next: verdis step 2 (proven RESP2
 codec in the live path, in the verdis repo — pin bump to f0cf865 needed in verdis ci/rocqeteer.lock).
-Remaining v2 backlog (step-3 drivers): R4 expiring store, R5 Time, R6 list elimination, R8 message
-errors, R9 journal, R10 typechecker.
+Remaining v2 backlog (step-3 drivers): R6 list elimination, R8 message errors, R9 journal, R10 typechecker.
+
+R4+R5 TIME + EXPIRING STORE IMPLEMENTED (2026-07-11, ADR-0011, UNCOMMITTED — awaiting review):
+Z-keyed KV REPLACED by bytes-keyed expiring store — M = FMapAVL(String_as_OT), entry = (dval * option Z),
+world gains now_ms (immutable per run), ops OGet/OPut/ODelete re-shaped + OGetDeadline/OSetDeadline/ONow;
+liveness = now <=? d (alive AT deadline — oracle-validated boundary; malformed args stay Dstuck);
+observe filters expired and returns entries. run_top ctx now t. theories/TimeStore.v: 21 closed
+theorems (boundary d/d+1, put-clears, persist, setdl-missing, ONow+PAddChecked at 0/negative/overflow,
+full local mutant interpreter with `<` liveness observably rejected, deadline-state inhabitance).
+incr_correct re-proven over the store for EVERY now (live view; put pins deadline None) + deadline-
+carrying inhabitant. Cache keys migrated to bytes too (one emit_key discipline). runtime/: time.ml
+(source = unit -> Z.t, wall_clock_ms via Unix — base-unix declared, ships with compiler), kv.ml
+bytes-keyed (Rval.t * Z option) Hashtbl with lazy expiry, runtime.ml = Runtime.with_store_and_time
+(ONE source, Time outermost; manifest assumption Runtime_SingleTimeSource_refines). codegen: bytes
+emit_key + new op lowerings; all store ops return Rval.t. Samples: decimal-bytes keys + sample_store/
+ttl/put_clears/persist/setdl_missing/now. Tests: 11 suites migrated + diff_store (3000 states, boundary
+d-1/d/d+1 asserted per key, NUL/prefix-collision/empty keys, coverage K/D/P asserted) + diff_time
+(3000 runs, 0/negative/2^62/overflow, reference-now == fast-source-now). make all green except the
+expected check_tcb git-drift FAIL (tcb_report.md regenerated, uncommitted); make demo green;
+kb-lint clean; 67 Print Assumptions all "Closed under the global context".

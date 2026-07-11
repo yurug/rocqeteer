@@ -1,18 +1,21 @@
-(** rocq-eff-codegen (IR v2 R7: structured values): lower an extracted EffIR [tm] to
-    direct-style OCaml 5. R7 (adr-0010-structured-values) adds [VTag]/[VList] to
-    [emit_val] (-> [Rval.Tag]/[Rval.List]) and [PTag] to [emit_branch] (a literal-tag
-    match with a payload binder, chained like [PSome]).
+(** rocq-eff-codegen (IR v2 R4+R5: Time + expiring bytes-keyed store, adr-0011): lower an
+    extracted EffIR [tm] to direct-style OCaml 5. R4+R5 makes [emit_key] a BYTES emitter
+    ([VBytes] key literals -> escaped [Bytes.of_string] literals; a [VVar] key extracts
+    the payload of an [Rval.Bytes]), re-shapes [OGet]/[OPut]/[ODelete] to the store
+    signatures, and adds [OGetDeadline]/[OSetDeadline] (-> [Kv.get_deadline]/
+    [Kv.set_deadline]) and [ONow] (-> [Time.now ()]).
 
     The monad is ERASED by construction: [Bind] -> [let], [Perform] -> a [Kv.*] call,
     [Match] -> chained match/if (adr-0008-general-match §Decision 4). No [Bind]/free-monad
     constructor survives into the output (property P3). Out-of-fragment input fails loudly
     rather than emitting unsound code (kb/spec/codegen.md, kb/spec/error-taxonomy.md).
 
-    Values are typed as [Rval.t] at effect boundaries (IR v2 milestone 1).  Keys at
-    KV/Cache call sites stay [Z.t] — bytes keys are a later milestone.  When generated
-    code consumes a KV/cache value as an integer (e.g. [VSucc] applied to a bound
-    variable), it emits a match on [Rval.Int]; the fallback raises [Rval.Stuck], mirroring
-    the reference interpreter's [Dstuck] sentinel on ill-typed values. *)
+    Values are typed as [Rval.t] at effect boundaries (IR v2 milestone 1); every store op
+    returns [Rval.t] (get: None/Some, put: Unit, delete: Bool, get_deadline: the
+    nested-option encoding, set_deadline: Bool), so heterogeneous Match branches stay
+    well-typed. When generated code consumes a value at a narrower type (e.g. [VSucc] on
+    a bound variable, or a [VVar] in key position), it emits a match whose fallback raises
+    [Rval.Stuck], mirroring the reference interpreter's [Dstuck] sentinel. *)
 
 open Ref_extracted.EffIR
 
@@ -29,17 +32,37 @@ let bind_name (env : string list) : string = "v" ^ string_of_int (List.length en
 let emit_z (z : BinNums.coq_Z) : string =
   Printf.sprintf "(Z.of_string \"%s\")" (Z.to_string (Coqconv.z_of_coqz z))
 
-(* [emit_key] emits a [Z.t] expression for a KV/Cache key argument.
-   Only [VInt] and [VZero] are key-literal forms; [VVar] is NOT used as a key in slice 1. *)
+(* Emit a deterministically escaped bytes-literal body from an ascii list: printable
+   ASCII (0x20–0x7E, minus backslash and double-quote) as-is; all other bytes as \xNN.
+   Binary-safe, byte-stable output (property P4/NF5) regardless of content. *)
+let emit_bytes_literal bs =
+  let chars = List.map Coqconv.char_of_ascii bs in
+  let buf = Buffer.create (List.length chars * 2) in
+  List.iter (fun c ->
+    let n = Char.code c in
+    if n >= 0x20 && n <= 0x7E && c <> '"' && c <> '\\' then
+      Buffer.add_char buf c
+    else (
+      Buffer.add_string buf "\\x";
+      Buffer.add_string buf (Printf.sprintf "%02x" n))
+  ) chars;
+  Buffer.contents buf
+
+(* [emit_key] emits a [bytes] expression for a store/Cache key argument (R4, adr-0011:
+   keys are byte strings). [VBytes] is the key-literal form; a [VVar] key extracts the
+   payload of an [Rval.Bytes], raising [Rval.Stuck] on ill-typed values (mirroring the
+   reference [Dstuck] on a non-bytes key). *)
 let emit_key (env : string list) (v : coq_val) : string =
   match v with
-  | VInt z  -> emit_z z
-  | VZero   -> "Z.zero"
+  | VBytes bs ->
+      Printf.sprintf "(Bytes.of_string \"%s\")"
+        (emit_bytes_literal (Coqconv.list_of_coq bs))
   | VVar n  -> (
       match List.nth_opt env (Coqconv.int_of_nat n) with
-      | Some name -> name   (* a VVar used as a key — caller must ensure it is Z.t-shaped *)
+      | Some name ->
+          Printf.sprintf "(match %s with Rval.Bytes _b -> _b | _ -> raise Rval.Stuck)" name
       | None -> raise (Codegen_error "VVar index out of scope (key)"))
-  | _ -> raise (Codegen_error "non-integer value used in key position")
+  | _ -> raise (Codegen_error "non-bytes value used in key position")
 
 (* [emit_val] emits a [Rval.t] expression.
    [VSucc] requires the inner value to be [Rval.Int]; the match raises [Rval.Stuck] on
@@ -91,34 +114,26 @@ let rec emit_val (env : string list) (v : coq_val) : string =
       let items = Coqconv.list_of_coq vs |> List.map (emit_val env) in
       Printf.sprintf "(Rval.List [%s])" (String.concat "; " items)
 
-(* KV operations lower to the curried public wrappers (kb/spec/effect-signatures.md,
-   Resolution 7). Wrong arity is a codegen error, not a silent cast.
-   Key arguments use [emit_key] (Z.t); value arguments use [emit_val] (Rval.t). *)
+(* Store/Time/etc. operations lower to the curried public wrappers
+   (kb/spec/effect-signatures.md, Resolution 7). Wrong arity is a codegen error, not a
+   silent cast. Key arguments use [emit_key] (bytes); value arguments use [emit_val]
+   (Rval.t); [OSetDeadline]'s deadline argument is a val (VNone | VSome (VInt d)) and
+   goes through [emit_val] unchanged (adr-0011 — no new val constructors). *)
 let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   match o, args with
   | OGet,    [k]     -> Printf.sprintf "(Kv.get %s)" (emit_key env k)
   | OPut,    [k; v]  -> Printf.sprintf "(Kv.put %s %s)" (emit_key env k) (emit_val env v)
   | ODelete, [k]     -> Printf.sprintf "(Kv.delete %s)" (emit_key env k)
+  | OGetDeadline, [k] -> Printf.sprintf "(Kv.get_deadline %s)" (emit_key env k)
+  | OSetDeadline, [k; d] ->
+      Printf.sprintf "(Kv.set_deadline %s %s)" (emit_key env k) (emit_val env d)
+  | ONow,    []      -> "(Time.now ())"
   | OThrow,  [e]     -> Printf.sprintf "(Err.throw %s)" (emit_val env e)
   | OAsk,    []      -> "(Env.ask ())"
   | OTrace,  [v]     -> Printf.sprintf "(Trace.emit %s)" (emit_val env v)
   | OCacheGet, [k]   -> Printf.sprintf "(Cache.get %s)" (emit_key env k)
   | OCachePut, [k;v] -> Printf.sprintf "(Cache.put %s %s)" (emit_key env k) (emit_val env v)
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
-
-(* Helper: emit escaped bytes literal string from an ascii list (same escaping as emit_val). *)
-let emit_bytes_literal bs =
-  let chars = List.map Coqconv.char_of_ascii bs in
-  let buf = Buffer.create (List.length chars * 2) in
-  List.iter (fun c ->
-    let n = Char.code c in
-    if n >= 0x20 && n <= 0x7E && c <> '"' && c <> '\\' then
-      Buffer.add_char buf c
-    else (
-      Buffer.add_string buf "\\x";
-      Buffer.add_string buf (Printf.sprintf "%02x" n))
-  ) chars;
-  Buffer.contents buf
 
 (* [emit_branch] compiles one branch (adr-0008 §Decision 4 chaining scheme).
    For literal patterns (PBytes, PUnit, PBool, PInt): emit an if-then-else equality guard.
@@ -229,9 +244,9 @@ and emit_tm (env : string list) (t : tm) : string =
       emit_prim env p (Coqconv.list_of_coq args)
 
 let header =
-  "(* Generated by rocq-eff-codegen (IR v2 R7). Source: theories/EffIR.v + Samples.v.\n\
+  "(* Generated by rocq-eff-codegen (IR v2 R4+R5). Source: theories/EffIR.v + Samples.v.\n\
   \   Direct-style; the EffIR monad has been erased. Do not edit manually.\n\
-  \   See kb/spec/codegen.md and kb/architecture/decisions/adr-0010-structured-values.md. *)\n\
+  \   See kb/spec/codegen.md and kb/architecture/decisions/adr-0011-time-and-expiring-store.md. *)\n\
    open Rkv\n"
 
 (* Emit one direct-style [name () = …] per entry of the SINGLE-SOURCE program list

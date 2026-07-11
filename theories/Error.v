@@ -4,18 +4,14 @@
     was committed before the throw. This file proves the algebraic law "throw e ;; k = throw
     e" (kb/spec/reference-semantics.md §laws) and a concrete abort, plus a mutant showing the
     throw is what causes the abort. The OCaml runtime (runtime/err.ml) is asserted to refine
-    this and validated by tests/diff_err.ml. *)
+    this and validated by tests/diff_err.ml.
 
-From Stdlib Require Import ZArith List FMapFacts FMapAVL OrderedTypeEx.
+    R4 (adr-0011): keys are byte strings; store entries carry (value, optional deadline). *)
+
+From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR Samples.
 Import ListNotations.
 Local Open Scope Z_scope.
-
-Module Import EFacts := FMapFacts.WFacts_fun(Z_as_OT)(M).
-Opaque M.find M.add M.empty M.remove.
-
-Lemma find_add_same : forall k (v : dval) (s : state), M.find k (M.add k v s) = Some v.
-Proof. intros; apply add_eq_o; reflexivity. Qed.
 
 (** ** Algebraic law: throwing aborts the bind — the continuation [k] is discarded and the
     state [s] is unchanged, for ANY error expression [e] and continuation [k]
@@ -24,38 +20,27 @@ Lemma throw_aborts : forall env e k w,
   run env (Bind (Perform OThrow [e]) k) w = (OErr (eval_val env e), w).
 Proof. intros; cbn [run eval_val map nth]; reflexivity. Qed.
 
-(** ** Concrete abort: [sample_throw] = put 1; throw 99; put 2. The outcome is the error,
-    the pre-throw write to key 1 committed, and the post-throw write to key 2 never happened. *)
+(** ** Concrete abort: [sample_throw] = put "1"; throw 99; put "2". The outcome is the
+    error, the pre-throw write to key "1" committed (deadline-less entry), and the
+    post-throw write to key "2" never happened. *)
 Theorem sample_throw_aborts :
-  let '(o, w') := run [] sample_throw (init_world DUnit) in
+  let '(o, w') := run [] sample_throw (init_world DUnit 0) in
   o = OErr (DInt 99)
-  /\ M.find 1 w'.(kv) = Some (DInt 1)
-  /\ M.find 2 w'.(kv) = None.
-Proof.
-  unfold sample_throw.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
-       match_pat push_env fold_left].
-  split; [ reflexivity | split ].
-  - rewrite find_add_same; reflexivity.
-  - rewrite add_neq_o by congruence; rewrite empty_o; reflexivity.
-Qed.
+  /\ M.find (string_of_list_ascii key1) w'.(kv) = Some (DInt 1, None)
+  /\ M.find (string_of_list_ascii key2) w'.(kv) = None.
+Proof. vm_compute. repeat split. Qed.
 
 (** ** Anti-vacuity (mutant): replace the throw with [Ret] and the computation COMPLETES —
-    outcome [ORet], and key 2 IS written. So the abort in [sample_throw_aborts] is caused by
-    the throw, not by anything else (kb/architecture/decisions/adr-0005-anti-vacuity.md). *)
+    outcome [ORet], and key "2" IS written. So the abort in [sample_throw_aborts] is caused
+    by the throw, not by anything else (kb/architecture/decisions/adr-0005-anti-vacuity.md). *)
 Definition sample_nothrow : tm :=
-  Bind (Perform OPut [VInt 1; VSucc VZero])
+  Bind (Perform OPut [VBytes key1; VSucc VZero])
        (Bind (Ret VUnit)
-             (Perform OPut [VInt 2; VSucc (VSucc VZero)])).
+             (Perform OPut [VBytes key2; VSucc (VSucc VZero)])).
 
 Theorem sample_nothrow_completes :
-  let '(o, w') := run [] sample_nothrow (init_world DUnit) in
-  o = ORet DUnit /\ M.find 2 w'.(kv) = Some (DInt 2).
-Proof.
-  unfold sample_nothrow.
-  cbn [run eval_val handle_kv map nth opt_to_dval set_kv kv
-       match_pat push_env fold_left].
-  split; [ reflexivity | rewrite find_add_same; reflexivity ].
-Qed.
+  let '(o, w') := run [] sample_nothrow (init_world DUnit 0) in
+  o = ORet DUnit /\ M.find (string_of_list_ascii key2) w'.(kv) = Some (DInt 2, None).
+Proof. vm_compute. repeat split. Qed.
 
 Print Assumptions sample_throw_aborts.

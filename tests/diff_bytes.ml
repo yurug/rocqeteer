@@ -1,8 +1,8 @@
 (** Differential test for VBytes / DBytes (IR v2 milestone R1).
 
     Exercises [sample_bytes] and generated code that stores / fetches binary-hostile byte
-    values through the KV effect.  The reference interpreter's [DBytes] and the fast side's
-    [Rval.Bytes] must agree on the KV observable for all tested byte classes:
+    values through the store effect.  The reference interpreter's [DBytes] and the fast
+    side's [Rval.Bytes] must agree on the store observable for all tested byte classes:
 
       B1  empty bytes                    (edge: zero-length)
       B2  embedded NUL                   (edge: C-string terminator)
@@ -12,6 +12,8 @@
       B6  large payload (>= 256 bytes)   (edge: beyond byte width)
       B7  mixed printable + control      (the sample_bytes literal itself)
 
+    R4+R5 (adr-0011): keys are byte strings ("5"); entries carry (value, deadline).
+
     Seeds are logged; every counterexample is printed with its seed for corpus replay.
     Coverage of B1–B7 is ASSERTED, not assumed. *)
 
@@ -20,36 +22,43 @@ module D  = Ref_extracted.Datatypes
 module S  = Ref_extracted.Samples
 module Gen = Generated.Prog0_generated
 
+let now = Z.zero
+let key5 = Bytes.of_string "5"
+
 (* --- reference side -------------------------------------------------------- *)
 
-(** Run [term] from a KV state seeded with [(key, Rval.t) list]; normalise the
-    observable to a sorted [(Z.t * Rval.t) list] via the Coq/OCaml bridge. *)
-let ref_observe (term : E.tm) (pairs : (Z.t * Rkv.Rval.t) list) : (Z.t * Rkv.Rval.t) list =
+(** Run [term] from a store seeded with [(bytes key, Rval.t) list]; normalise the
+    observable to a sorted [(bytes * entry) list] via the Coq/OCaml bridge. *)
+let ref_observe (term : E.tm) (pairs : (bytes * Rkv.Rval.t) list)
+    : (bytes * (Rkv.Rval.t * Z.t option)) list =
   let m0 =
     List.fold_left
-      (fun m (k, v) -> E.M.add (Coqconv.coqz_of_z k) (Coqconv.dval_of_rval v) m)
+      (fun m (k, v) ->
+         E.M.add (Coqconv.coq_string_of_bytes k)
+           (Coqconv.coq_entry_of_rval (v, None)) m)
       E.M.empty pairs
   in
   let bindings =
-    match E.observe_full E.DUnit m0 term with
+    match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 term with
     | D.Coq_pair (D.Coq_pair (_oc, bs), _tr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->
        match p with
-       | D.Coq_pair (k, v) -> (Coqconv.z_of_coqz k, Coqconv.rval_of_dval v))
-  |> List.sort (fun (a, _) (b, _) -> Z.compare a b)
+       | D.Coq_pair (k, e) ->
+           (Coqconv.bytes_of_coq_string k, Coqconv.rval_entry_of_coq e))
+  |> List.sort (fun (a, _) (b, _) -> Bytes.compare a b)
 
 (* --- fast side ------------------------------------------------------------- *)
 
-let fast_observe (fn : unit -> unit) (pairs : (Z.t * Rkv.Rval.t) list)
-    : (Z.t * Rkv.Rval.t) list =
+let fast_observe (fn : unit -> unit) (pairs : (bytes * Rkv.Rval.t) list)
+    : (bytes * (Rkv.Rval.t * Z.t option)) list =
   let table = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k v) pairs;
-  (match Rkv.Kv.run_checked table fn with
+  List.iter (fun (k, v) -> Rkv.Kv.T.replace table k (v, None)) pairs;
+  (match Rkv.Runtime.with_store_and_time_checked ~source:(fun () -> now) table fn with
    | Ok () -> ()
    | Error e -> failwith ("diff_bytes fast: " ^ Rkv.Kv.string_of_error e));
-  Rkv.Kv.observe table
+  Rkv.Kv.observe ~now table
 
 (* --- programs -------------------------------------------------------------- *)
 
@@ -87,16 +96,15 @@ let gen_payload () : bytes =
       Bytes.of_string s
   | _  -> gen_bytes (Random.State.int rng 64)                      (* general *)
 
-(** The seeded state: key 5 holds a bytes value (sample_bytes reads/writes key 5). *)
-let gen_state () : (Z.t * Rkv.Rval.t) list =
-  (* Optionally pre-seed key 5 with a bytes value so the MatchOpt Some-branch is taken. *)
+(** The seeded state: key "5" holds a bytes value (sample_bytes reads/writes key "5"). *)
+let gen_state () : (bytes * Rkv.Rval.t) list =
+  (* Optionally pre-seed key "5" with a bytes value so the table-seeding path is covered
+     (sample_bytes always PUTS first, so any pre-seed is overwritten). *)
   match Random.State.int rng 3 with
-  | 0 -> []  (* key 5 absent -> Put followed by Get hits the Some branch after Put *)
+  | 0 -> []  (* key "5" absent -> Put followed by Get hits the Some branch after Put *)
   | _ ->
       let b = gen_payload () in
-      (* sample_bytes always PUTS first, so any pre-seed is overwritten;
-         we still seed for coverage of the table-seeding path. *)
-      [ (Z.of_int 5, Rkv.Rval.Bytes b) ]
+      [ (key5, Rkv.Rval.Bytes b) ]
 
 (* --- coverage tracking ----------------------------------------------------- *)
 
@@ -120,9 +128,14 @@ let note_payload (b : bytes) =
   done;
   if n >= 256 then cover_b6 := true
 
-let show_state (pairs : (Z.t * Rkv.Rval.t) list) =
+let show_entry (v, dl) =
+  Rkv.Rval.to_string v ^ (match dl with None -> "" | Some d -> "@" ^ Z.to_string d)
+
+let show_state (pairs : (bytes * (Rkv.Rval.t * Z.t option)) list) =
   "[" ^ String.concat "; "
-    (List.map (fun (k, v) -> Printf.sprintf "%s=%s" (Z.to_string k) (Rkv.Rval.to_string v)) pairs)
+    (List.map (fun (k, e) ->
+         Printf.sprintf "%s=%s" (Rkv.Rval.to_string (Rkv.Rval.Bytes k)) (show_entry e))
+       pairs)
   ^ "]"
 
 (* --- main ------------------------------------------------------------------ *)
@@ -135,23 +148,24 @@ let () =
   let n = 3000 in
   let fails = ref 0 in
   for _ = 1 to n do
-    (* Generate a payload for coverage tracking (also used as potential KV pre-seed). *)
+    (* Generate a payload for coverage tracking (also used as potential store pre-seed). *)
     let payload = gen_payload () in
     note_payload payload;
 
     let pairs = gen_state () in
     List.iter (fun (name, term, fn) ->
       let r = ref_observe term pairs and f = fast_observe fn pairs in
+      let entry_eq (v1, d1) (v2, d2) = Rkv.Rval.equal v1 v2 && Option.equal Z.equal d1 d2 in
       let eq =
         List.length r = List.length f
         && List.for_all2
-             (fun (k1, v1) (k2, v2) -> Z.equal k1 k2 && Rkv.Rval.equal v1 v2)
+             (fun (k1, e1) (k2, e2) -> Bytes.equal k1 k2 && entry_eq e1 e2)
              r f
       in
       if not eq then (
         incr fails;
-        Printf.printf "MISMATCH %s (RSEED=%d) state=%s\n  ref =%s\n  fast=%s\n"
-          name seed (show_state pairs) (show_state r) (show_state f))
+        Printf.printf "MISMATCH %s (RSEED=%d)\n  ref =%s\n  fast=%s\n"
+          name seed (show_state r) (show_state f))
     ) programs
   done;
   let cov_ok =

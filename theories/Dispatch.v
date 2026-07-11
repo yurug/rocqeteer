@@ -18,24 +18,24 @@ Opaque M.find M.add M.empty M.remove M.elements.
 
 (** ** Outcome 1: "GET" context dispatches to branch 1 -> DInt 1. *)
 Theorem dispatch_get :
-  let '(o, _) := run_top (DBytes get_bytes) sample_dispatch in
+  let '(o, _) := run_top (DBytes get_bytes) 0 sample_dispatch in
   o = ORet (DInt 1).
 Proof. vm_compute. reflexivity. Qed.
 
 (** ** Outcome 2: "SET" context dispatches to branch 2 -> DInt 2. *)
 Theorem dispatch_set :
-  let '(o, _) := run_top (DBytes set_bytes) sample_dispatch in
+  let '(o, _) := run_top (DBytes set_bytes) 0 sample_dispatch in
   o = ORet (DInt 2).
 Proof. vm_compute. reflexivity. Qed.
 
 (** ** Outcome 3: any other context falls through to default -> DInt 0. *)
 Theorem dispatch_default :
-  let '(o, _) := run_top (DBytes []) sample_dispatch in
+  let '(o, _) := run_top (DBytes []) 0 sample_dispatch in
   o = ORet (DInt 0).
 Proof. vm_compute. reflexivity. Qed.
 
 (** ** Inhabitance: the precondition (any context) is trivially satisfied. *)
-Lemma dispatch_inhabited : exists w, run_top (DBytes []) sample_dispatch = (ORet (DInt 0), w).
+Lemma dispatch_inhabited : exists w, run_top (DBytes []) 0 sample_dispatch = (ORet (DInt 0), w).
 Proof. eexists. vm_compute. reflexivity. Qed.
 
 (** ** First-match-wins mutant: swap the two branches — the first matching literal wins.
@@ -68,13 +68,13 @@ Definition sample_dispatch_dup : tm :=
 
 (** With a duplicate "GET" branch, the FIRST one wins — returns 1, not 99. *)
 Theorem dispatch_first_match_wins :
-  let '(o, _) := run_top (DBytes get_bytes) sample_dispatch_dup in
+  let '(o, _) := run_top (DBytes get_bytes) 0 sample_dispatch_dup in
   o = ORet (DInt 1).
 Proof. vm_compute. reflexivity. Qed.
 
 (** The second "GET" branch would return 99 if it fired — proving it is suppressed. *)
 Theorem dispatch_second_branch_suppressed :
-  ~ (let '(o, _) := run_top (DBytes get_bytes) sample_dispatch_dup in
+  ~ (let '(o, _) := run_top (DBytes get_bytes) 0 sample_dispatch_dup in
      o = ORet (DInt 99)).
 Proof. vm_compute. intro H. discriminate H. Qed.
 

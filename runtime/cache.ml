@@ -3,16 +3,17 @@
     Observationally invisible: the cache is a separate [Hashtbl] the handler holds; it never
     appears in the KV observable. A program that memoizes correctly produces the same
     KV/trace result whether the cache hits or misses (kb/spec/effect-signatures.md).
-    Cache values are now [Rval.t] (IR v2 milestone 1).
+    Cache values are [Rval.t]; keys are native [bytes] since R4 (adr-0011 — one key
+    discipline across the value-keyed effects). The cache has NO deadlines.
 
     [CGet] returns [Rval.t] (not [Rval.t option]): absent keys become [Rval.None] and
     present keys become [Rval.Some v], matching [opt_to_dval] in the reference semantics. *)
 
 module T = Hashtbl.Make (struct
-  type t = Z.t
+  type t = bytes
 
-  let equal = Z.equal
-  let hash z = Hashtbl.hash (Z.to_string z)
+  let equal = Bytes.equal
+  let hash b = Hashtbl.hash (Bytes.to_string b)
 end)
 
 let opt_to_rval : Rval.t option -> Rval.t = function
@@ -20,8 +21,8 @@ let opt_to_rval : Rval.t option -> Rval.t = function
   | Some v -> Rval.Some v
 
 type _ Effect.t +=
-  | CGet : Z.t -> Rval.t Effect.t
-  | CPut : (Z.t * Rval.t) -> unit Effect.t
+  | CGet : bytes -> Rval.t Effect.t
+  | CPut : (bytes * Rval.t) -> unit Effect.t
 
 let get k = Effect.perform (CGet k)
 let put k v = Effect.perform (CPut (k, v))

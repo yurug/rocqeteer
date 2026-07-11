@@ -1,3 +1,6 @@
+; `unix` is used ONLY for Time.wall_clock_ms (the OCaml stdlib has no wall clock);
+; it ships with the compiler distribution — not a new opam dependency (adr-0003 budget
+; unchanged; recorded in docs/runtime_manifest.toml, effect."Time").
 (library
  (name rkv)
- (libraries zarith))
+ (libraries zarith unix))
