@@ -25,6 +25,7 @@ related: [index, arch-overview]
 | `adr-0011-time-and-expiring-store.md` | Time effect (ONow, per-run now_ms) + bytes-keyed store with deadlines replacing Z-keyed KV; live iff now <= d; one injected time source | R4+R5 design (2026-07-11) |
 | `adr-0012-list-elimination.md` | Bounded accumulator Fold (acc db0, elem db1; error short-circuits) + PListLen/PListNth prims; no PNil/PCons | R6 design (2026-07-11) |
 | `adr-0013-journal-effect.md` | Journal effect: OJournal appends (now_ms, dval); order + frame laws + generic run-sequence fold lemma; durability = named consumer trust | R9 design (2026-07-11) |
+| `adr-0014-wf-checker.md` | R10 v1 = PROVEN wf checker (scope+arity; kills scope-Dstuck at build time; codegen refuses non-wf); value-shape typing = open phase 2 | R10 design (2026-07-11) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing
