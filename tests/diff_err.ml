@@ -74,7 +74,12 @@ let state_eq a b =
 
 let programs : (string * E.tm * (unit -> unit)) list =
   [ ("sample_throw", S.sample_throw, fun () -> ignore (Gen.sample_throw ()));
-    ("sample_guard5", S.sample_guard5, fun () -> ignore (Gen.sample_guard5 ())) ]
+    ("sample_guard5", S.sample_guard5, fun () -> ignore (Gen.sample_guard5 ()));
+    (* R8 confirmation (adr-0012 milestone; theories/Fold.v §R8): error payloads are
+       arbitrary dvals — a DBytes message and a DTag-structured payload must cross the
+       fast==reference comparison identically. *)
+    ("sample_throw_bytes", S.sample_throw_bytes, fun () -> ignore (Gen.sample_throw_bytes ()));
+    ("sample_throw_tagged", S.sample_throw_tagged, fun () -> ignore (Gen.sample_throw_tagged ())) ]
 
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260621
 let rng = Random.State.make [| seed |]
@@ -113,11 +118,23 @@ let () =
             (show_err f.err) (show f.state)))
       programs
   done;
+  (* R8 spot-check: the DBytes error payload crosses fast==reference BYTE-IDENTICALLY
+     (the exact message, not just "some error"). *)
+  let boom = Bytes.of_string "boom: k missing" in
+  let rb = ref_obs S.sample_throw_bytes []
+  and fb = fast_obs (fun () -> ignore (Gen.sample_throw_bytes ())) [] in
+  (match rb.err, fb.err with
+   | Some (Rkv.Rval.Bytes r), Some (Rkv.Rval.Bytes f)
+     when Bytes.equal r boom && Bytes.equal f boom -> ()
+   | _ ->
+       incr fails;
+       Printf.printf "R8 SPOT-CHECK FAIL (RSEED=%d): expected throw Bytes \"boom: k missing\"\n  ref=%s fast=%s\n"
+         seed (show_err rb.err) (show_err fb.err));
   let cov_ok = !threw > 0 && !returned > 0 in
   Printf.printf "states=%d programs=%d fails=%d | guard5: threw=%d returned=%d\n"
     n (List.length programs) !fails !threw !returned;
   if !fails = 0 && cov_ok then
-    print_endline "ERROR DIFFERENTIAL OK: throw aborts identically; both paths covered"
+    print_endline "ERROR DIFFERENTIAL OK: throw aborts identically (incl. DBytes/DTag payloads); both paths covered"
   else (
     if not cov_ok then print_endline "COVERAGE GAP: guard5 did not exercise both throw and return";
     exit 1)

@@ -1,4 +1,4 @@
-(** * EffIR — first-order effect IR (v2, R4+R5: Time + expiring bytes-keyed store)
+(** * EffIR — first-order effect IR (v2, R6: list elimination — bounded Fold + list prims)
     and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
@@ -32,7 +32,20 @@
     the new [Time] effect exposes it via [ONow]. Ops: [OGet]/[OPut]/[ODelete] re-shaped
     to bytes keys ([OPut] CLEARS any deadline; [ODelete] returns whether a LIVE binding
     was removed), plus [OGetDeadline]/[OSetDeadline]. Cache keys migrate to bytes too
-    (one key discipline across the value-keyed effects). *)
+    (one key discipline across the value-keyed effects).
+
+    IR v2 R6 (2026-07-12, adr-0012-list-elimination): [Fold] term added — the ONE list
+    elimination form, an accumulator fold BOUNDED BY THE LIST (totality is structural on
+    the finite [DList]; no fuel, no static bound). [Fold lst init body]: evaluate [lst];
+    run [init] for the starting accumulator; for each element LEFT TO RIGHT run [body] in
+    the environment extended via [push_env [elem; acc]] (acc at de Bruijn 0, element at
+    de Bruijn 1); [body]'s result is the next accumulator. [OErr] from [init] or any
+    iteration short-circuits (Bind discipline); the world threads through iterations. A
+    non-[DList] scrutinee makes the fold EMPTY (result = [init]'s result) — total without
+    a typechecker, same posture as prim shape mismatch; R10 rejects it statically. Prims
+    gain [PListLen]/[PListNth] (arity checks + indexed access) and [PMulChecked] (checked
+    multiplication, e.g. seconds->ms scaling — same total/option-encoded style as
+    [PAddChecked]). No PNil/PCons patterns in v1 (adr-0012 §Decision 4). *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -118,7 +131,10 @@ Inductive prim : Type :=
 | PBytesConcat  (** DBytes a, DBytes b -> DBytes (a ++ b) *)
 | PBytesSub     (** DBytes bs, DInt offset, DInt len -> DSome (DBytes slice) or DNone if OOB *)
 | PParseInt64   (** DBytes bs -> DSome (DInt z) under strict grammar, else DNone *)
-| PPrintInt.    (** DInt z -> DSome (DBytes decimal) if in-range, DNone if not *)
+| PPrintInt     (** DInt z -> DSome (DBytes decimal) if in-range, DNone if not *)
+| PMulChecked   (** DInt a, DInt b -> DSome (DInt (a*b)) if in-range, DNone otherwise (R6) *)
+| PListLen      (** DList vs -> DInt (length vs); shape mismatch -> DNone (R6) *)
+| PListNth.     (** DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -136,6 +152,23 @@ Definition apply_add_checked (a b : Z) : dval :=
 Definition apply_sub_checked (a b : Z) : dval :=
   let r := a - b in
   if in_range r then DSome (DInt r) else DNone.
+
+(** [apply_mul_checked a b]: Z multiplication, DNone if result leaves int64 range (R6,
+    adr-0012). NB the asymmetric boundary: [int64_min * -1 = 2^63 > int64_max] -> DNone. *)
+Definition apply_mul_checked (a b : Z) : dval :=
+  let r := a * b in
+  if in_range r then DSome (DInt r) else DNone.
+
+(** [apply_list_nth vs i]: the i-th element of [vs] (0-based), option-encoded (R6,
+    adr-0012 §Decision 3): DSome v_i if 0 <= i < length vs, DNone otherwise. The bounds
+    check is in Z; only an in-bounds index is converted to nat. *)
+Definition apply_list_nth (vs : list dval) (i : Z) : dval :=
+  if (i <? 0) || (Z.of_nat (List.length vs) <=? i)
+  then DNone
+  else match List.nth_error vs (Z.to_nat i) with
+       | Some v => DSome v
+       | None   => DNone   (* unreachable: the bound check guarantees in-range *)
+       end.
 
 (** [apply_cmp_int a b]: total three-way comparison; result is DInt −1, 0, or 1. *)
 Definition apply_cmp_int (a b : Z) : dval :=
@@ -278,6 +311,9 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
   | PBytesSub,    [DBytes bs; DInt off; DInt len] => apply_bytes_sub bs off len
   | PParseInt64,  [DBytes bs]          => apply_parse_int64 bs
   | PPrintInt,    [DInt z]             => apply_print_int z
+  | PMulChecked,  [DInt a; DInt b]     => apply_mul_checked a b
+  | PListLen,     [DList vs]           => DInt (Z.of_nat (List.length vs))
+  | PListNth,     [DList vs; DInt i]   => apply_list_nth vs i
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 
@@ -346,10 +382,19 @@ Inductive tm : Type :=
                in order; the first matching branch runs its body with bound payloads pushed
                left-to-right (last payload = de Bruijn 0); [default] runs on no match. *)
 | Repeat  : nat -> tm -> tm    (* bounded loop: run [body] [n] times (the report's for_i / fuel recursion) *)
-| Prim    : prim -> list val -> tm.
+| Prim    : prim -> list val -> tm
            (** [Prim p args]: evaluate each val in [args], apply [apply_prim p], yield result.
                Pure step (no world change); [Bind] sequences the result into the continuation.
                Result is always a dval (may be DNone for mismatch/failure). *)
+| Fold    : val -> tm -> tm -> tm.
+           (** [Fold lst init body] (R6, adr-0012-list-elimination): the accumulator fold
+               bounded by the list. Evaluate [lst]; run [init] for the starting
+               accumulator; per element LEFT TO RIGHT run [body] with the environment
+               extended via [push_env [elem; acc]] (acc = de Bruijn 0, element = de
+               Bruijn 1); [body]'s result is the next accumulator; the final accumulator
+               is the result. [OErr] from [init] or any iteration short-circuits; the
+               world threads. Non-[DList] scrutinee: the fold is EMPTY (result = [init]'s
+               result — [init]'s effects still happen exactly once). *)
 
 (** ** Pure-value evaluation in a de Bruijn environment. Total: out-of-scope vars and
     type errors yield [Dstuck]. *)
@@ -542,6 +587,35 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
          definition, return the result — world is unchanged (pure step). *)
       let vs := map (eval_val env) args in
       (ORet (apply_prim p vs), w)
+  | Fold lst init body =>
+      (* R6 (adr-0012): evaluate the scrutinee (pure), run [init] once for the starting
+         accumulator, then iterate the elements LEFT TO RIGHT. The inner [fold_elems]
+         recurses structurally on the element list [xs] (the bound comes from the data,
+         which is finite — no fuel); the calls to [run … body] are on a strict subterm of
+         [Fold lst init body], so the outer fixpoint stays structurally guarded (the
+         Repeat/Match nested-fix technique). An [OErr] from [init] or any iteration
+         short-circuits; the world threads through iterations. A non-[DList] scrutinee
+         yields [init]'s result (empty fold — adr-0012 §Decision 2). *)
+      let d := eval_val env lst in
+      match run env init w with
+      | (OErr e, w') => (OErr e, w')     (* init aborted: the fold never starts *)
+      | (ORet acc0, w') =>
+          match d with
+          | DList vs =>
+              (fix fold_elems (xs : list dval) (acc : dval) (w0 : world) {struct xs}
+                 : outcome * world :=
+                 match xs with
+                 | []       => (ORet acc, w0)
+                 | x :: xs' =>
+                     (* push_env [elem; acc]: acc pushed last = de Bruijn 0, elem = 1. *)
+                     match run (push_env [x; acc] env) body w0 with
+                     | (ORet acc', w1) => fold_elems xs' acc' w1
+                     | (OErr e, w1)    => (OErr e, w1)   (* abort mid-fold *)
+                     end
+                 end) vs acc0 w'
+          | _ => (ORet acc0, w')          (* non-DList: empty fold, init's result *)
+          end
+      end
   end.
 
 (** Initial world: empty store, the given [c] context, the run's instant [now], empty

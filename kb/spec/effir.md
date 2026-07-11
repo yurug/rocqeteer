@@ -1,25 +1,27 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R4+R5 grammar (expiring bytes-keyed store + Time), typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R6 grammar (list elimination via bounded Fold + list prims, on top of the expiring bytes-keyed store + Time), typing, and what is in and out of scope.
 domain: spec
-last-updated: 2026-07-11
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store]
+last-updated: 2026-07-12
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 ---
 # Spec — EffIR (the first-order effect IR)
 
 > ⚠ **Slice-1 status:** the built subset differs — `VZero`/`VSucc` instead of `VPrim (list val)`,
-> no `typecheck_ir.ml`. IR v2 R2 (2026-07-10): general `Match` is implemented; `MatchOpt`
-> is removed. See [[adr-0008-general-match]].
-> IR v2 R3 (2026-07-10): `Prim` term + closed v1 prim set added. See [[adr-0009-vprim-registry]].
-> IR v2 R7 (2026-07-11): `DTag`/`VTag` (tagged sum injection) and `DList`/`VList` (finite
-> sequences) added to `dval`/`val`; `PTag` added to `pat`. No list elimination yet (R6).
-> See [[adr-0010-structured-values]].
-> IR v2 R4+R5 (2026-07-11): the Z-keyed KV is REPLACED by an expiring **bytes-keyed store**
-> (per-binding optional deadline; live iff `now_ms <= d`), and `world` gains `now_ms` read
-> by the new `Time` effect (`ONow`). See [[adr-0011-time-and-expiring-store]].
+> no `typecheck_ir.ml`.
+> R2 (2026-07-10): general `Match` replaces `MatchOpt` ([[adr-0008-general-match]]).
+> R3 (2026-07-10): `Prim` term + closed v1 prim set ([[adr-0009-vprim-registry]]).
+> R7 (2026-07-11): `DTag`/`VTag`, `DList`/`VList`, `PTag` ([[adr-0010-structured-values]]).
+> R4+R5 (2026-07-11): expiring **bytes-keyed store** (live iff `now_ms <= d`) + `Time`/`ONow`
+> ([[adr-0011-time-and-expiring-store]]).
+> R6 (2026-07-12): `Fold` term (the ONE list elimination) + prims
+> `PMulChecked`/`PListLen`/`PListNth` ([[adr-0012-list-elimination]]; `theories/Fold.v`).
+> R8 (2026-07-12): CONFIRMED CLOSED — error values carry **arbitrary dvals** incl. exact byte
+> messages and `DTag` payloads; true since R1/M1 (`OThrow` takes any val), made deliberate by
+> the payload-pinning theorems in `theories/Fold.v` §R8. No new machinery.
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -68,6 +70,9 @@ PBytesConcat  DBytes a, DBytes b -> DBytes (a ++ b)
 PBytesSub     DBytes bs, DInt offset, DInt len -> DSome (DBytes slice) or DNone if OOB
 PParseInt64   DBytes bs       -> DSome (DInt z) under STRICT grammar (DP1-DP8), else DNone
 PPrintInt     DInt z          -> DSome (DBytes decimal) if in-range, DNone if not
+PMulChecked   DInt a, DInt b  -> DSome (DInt (a*b)) if in range, else DNone (R6; NB -1 * int64_min = 2⁶³ -> DNone)
+PListLen      DList vs        -> DInt (length vs); shape mismatch -> DNone  (R6)
+PListNth      DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6; bound checked in Z)
 ```
 **Strict parse grammar (DP1-DP8):**
 1. DP1: empty input → DNone
@@ -92,9 +97,18 @@ tm ::= Ret val                       (* pure result *)
      | Match val (list (pat * tm)) tm (* depth-1 general match: scrutinee, ordered branches, mandatory default *)
      | Repeat nat tm                  (* bounded loop: run body n times *)
      | Prim prim (list val)           (* pure primitive step: evaluate args, apply prim, yield dval; world unchanged *)
+     | Fold val tm tm                 (* IR v2 R6: accumulator fold bounded by the list — Fold lst init body *)
 ```
 `Prim p args` is a pure step — it evaluates each arg as a val, applies `apply_prim p`, and yields the
 result as a dval. Bind sequences the result. Codegen emits `let vN = Prims.prim_<name> ... in`.
+
+`Fold lst init body` ([[adr-0012-list-elimination]]): evaluate `lst`; run `init` for the starting acc;
+per `DList` element **left to right**, run `body` with `push_env [elem; acc]` (**acc = db 0, elem =
+db 1**); `body`'s result is the next acc; the final acc is the result. `OErr` from `init` or any
+iteration short-circuits; the world threads. Non-`DList` scrutinee = **empty fold** (`init`'s result;
+its effects still run once); R10 rejects it statically. Totality is structural on the finite list (no
+fuel). Codegen: native `List.fold_left (fun acc elem -> BODY)`, binders `[acc; elem]` = db 0/1.
+Proofs: `theories/Fold.v` (effectful end-to-end, order + fold-right mutant, short-circuit, boundaries).
 
 `op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
 return types are fixed by that declaration.
@@ -134,23 +148,20 @@ Semantics: evaluate the scrutinee; try branches in order (**first-match-wins**);
 branch runs its body with bound payloads pushed left-to-right (last payload = de Bruijn 0); the
 **mandatory default arm** runs on no match, making Match total without a typechecker.
 
-Binder convention for PPair: `match_pat PPair (DPair a b) = Some [a; b]`; `push_env` pushes `[a; b]`
-left-to-right, so db0 = b (second, last pushed), db1 = a (first).
-
-`PTag z` matches `DTag z' v` iff `Z.eqb z z'`, yielding `[v]` (one binder, same convention as `PSome`).
+Binder convention for PPair: `match_pat PPair (DPair a b) = Some [a; b]`; `push_env` pushes left-to-right,
+so db0 = b (last pushed), db1 = a. `PTag z` matches `DTag z' v` iff `Z.eqb z z'`, yielding `[v]` (1 binder).
 
 No nesting of patterns; no PVar/PWild (the default arm covers wildcards).
 Match need not be exhaustive — the default arm handles all unmatched cases.
 
 ## Structured values (R7, adr-0010-structured-values)
 `DTag`/`VTag` inject a Z-tagged sum (multi-payload constructors nest `DPair`; nullary payloads use
-`DUnit`); `DList`/`VList` build a finite sequence of values. Both are domain-neutral — no protocol-
-specific constructor lives in the IR; a consumer represents its own ADT by choosing tag numbers and
-composing `DPair`/`DTag`/`DList`. `DList` is constructible and observable (equality in `observe`/every
-diff comparator) but has **no IR-level elimination until R6** — a consumer traverses a decoded `DList`
-in its own pure Gallina after the boundary, not inside EffIR. `Match` dispatches on `DTag` via `PTag`;
-a mis-tagged or non-`DTag` scrutinee falls to the mandatory default arm (same posture as adr-0009's
-option-encoding: the R10 typechecker will later flag this statically).
+`DUnit`); `DList`/`VList` build a finite sequence of values. Both are domain-neutral — a consumer
+represents its own ADT by choosing tag numbers and composing `DPair`/`DTag`/`DList`. `DList` is
+constructible, observable, and (since R6) eliminated by `Fold` / `PListLen` / `PListNth` — no
+PNil/PCons patterns in v1 ([[adr-0012-list-elimination]] §Decision 4). `Match` dispatches on `DTag`
+via `PTag`; a mis-tagged or non-`DTag` scrutinee falls to the mandatory default arm (same posture as
+adr-0009's option-encoding: the R10 typechecker will later flag this statically).
 
 ## Binding discipline
 De Bruijn indices throughout. `Bind t1 t2` extends the context by one for `t2`. `Match` branches extend the
@@ -186,4 +197,3 @@ to unregistered prims/effects. A failed codegen beats an unsound one.
 - `spec/effect-signatures.md` — how `op`s and effect sums are declared and typed.
 - `spec/reference-semantics.md` — the interpreter over `tm`.
 - `spec/codegen.md` — the syntactic lowering of each `val`/`tm` form to OCaml.
-</content>

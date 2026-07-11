@@ -276,6 +276,27 @@ Fixpoint run_mut (env : list dval) (t : tm) (w : world) : outcome * world :=
   | Prim p args =>
       let vs := map (eval_val env) args in
       (ORet (apply_prim p vs), w)
+  | Fold lst init body =>
+      (* R6: verbatim reference Fold case, recursing through [run_mut]. *)
+      let d := eval_val env lst in
+      match run_mut env init w with
+      | (OErr e, w') => (OErr e, w')
+      | (ORet acc0, w') =>
+          match d with
+          | DList vs =>
+              (fix fold_elems (xs : list dval) (acc : dval) (w0 : world) {struct xs}
+                 : outcome * world :=
+                 match xs with
+                 | []       => (ORet acc, w0)
+                 | x :: xs' =>
+                     match run_mut (push_env [x; acc] env) body w0 with
+                     | (ORet acc', w1) => fold_elems xs' acc' w1
+                     | (OErr e, w1)    => (OErr e, w1)
+                     end
+                 end) vs acc0 w'
+          | _ => (ORet acc0, w')
+          end
+      end
   end.
 
 Definition run_top_mut (c : dval) (now : Z) (t : tm) : outcome * world :=

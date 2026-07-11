@@ -14,3 +14,6 @@ val prim_bytes_concat : Rval.t -> Rval.t -> Rval.t
 val prim_bytes_sub    : Rval.t -> Rval.t -> Rval.t -> Rval.t
 val prim_parse_int64  : Rval.t -> Rval.t
 val prim_print_int    : Rval.t -> Rval.t
+val prim_mul_checked  : Rval.t -> Rval.t -> Rval.t
+val prim_list_len     : Rval.t -> Rval.t
+val prim_list_nth     : Rval.t -> Rval.t -> Rval.t

@@ -243,11 +243,46 @@ post         = "= rval_of_dval (apply_prim PPrintInt args); Rval.Some (Rval.Byte
 tests        = ["diff_prims"]
 owner        = "yann"
 
+[primitive."prim_mul_checked"]
+ocaml_symbol = "Prims.prim_mul_checked"
+purity       = "pure"
+raises       = []
+pre          = "args are Rval.Int values or shape mismatch"
+post         = "= rval_of_dval (apply_prim PMulChecked args); Rval.None on overflow (incl. -1 * int64_min = 2^63) or mismatch"
+tests        = ["diff_prims"]
+owner        = "yann"
+
+[primitive."prim_list_len"]
+ocaml_symbol = "Prims.prim_list_len"
+purity       = "pure"
+raises       = []
+pre          = "arg is Rval.List or shape mismatch"
+post         = "= rval_of_dval (apply_prim PListLen args); Rval.Int (length)"
+tests        = ["diff_prims"]
+owner        = "yann"
+
+[primitive."prim_list_nth"]
+ocaml_symbol = "Prims.prim_list_nth"
+purity       = "pure"
+raises       = []
+pre          = "args are (Rval.List, Rval.Int index) or mismatch"
+post         = "= rval_of_dval (apply_prim PListNth args); Rval.Some v_i for 0 <= i < len, Rval.None otherwise (index bound checked in Z before any int conversion — never Z.Overflow)"
+tests        = ["diff_prims"]
+owner        = "yann"
+
 [assumption."Runtime_Prims_refines"]
 statement    = "for all prim p and args, rval_of_dval (apply_prim p (map dval_of_rval args)) = Prims.prim_<name> args"
 reference    = "EffIR.apply_prim (the TOTAL reference definition; DNone/DSome option-encoded)"
 fast         = "Prims.prim_* realizers in runtime/prims.ml; written from Rocq definitions, same DP order"
-validated_by = ["diff_prims (3000 pipeline states, G1-G16 grammar-violation classes, coverage asserted; plus 2000-round direct apply_prim-vs-realizer pass over ALL 9 prims: boundaries, shape mismatches, beyond-native-int offsets)"]
+validated_by = ["diff_prims (3000 pipeline states, G1-G16 grammar-violation classes, coverage asserted; plus 2000-round direct apply_prim-vs-realizer pass over ALL 12 prims: boundaries incl. -1 * int64_min, shape mismatches, beyond-native-int offsets/indices)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_Fold_refines"]
+statement    = "Fold lst init body lowers to a native List.fold_left with binders [acc; elem] = de Bruijn [0; 1]; observe(fast) = observe(reference) on outcome (incl. OErr payload), live store, and trace — order, error short-circuit, and the non-list empty-fold posture included"
+reference    = "EffIR.run's Fold case (left-to-right nested fix over the DList; adr-0012-list-elimination); proven in theories/Fold.v (fold-right mutant rejected)"
+fast         = "codegen Fold lowering (codegen.ml): let-bound init, match on Rval.List, List.fold_left; Err.throw aborts mid-list natively"
+validated_by = ["diff_fold (400 rounds x 5 programs; F1-F8: empty/singleton/large-1000+/mixed lists, error mid-fold, acc overflow via PAddChecked, non-list scrutinee, order asserted via trace; coverage asserted)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 

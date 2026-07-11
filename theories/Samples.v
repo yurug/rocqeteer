@@ -9,7 +9,12 @@
 
     R4+R5 (adr-0011-time-and-expiring-store) add [sample_store]/[sample_ttl]/
     [sample_put_clears]/[sample_persist]/[sample_setdl_missing] (the expiring store ops)
-    and [sample_now] (the Time effect + deadline arithmetic via PAddChecked). *)
+    and [sample_now] (the Time effect + deadline arithmetic via PAddChecked).
+
+    R6 (adr-0012-list-elimination) adds the [Fold] samples ([sample_fold_put]/
+    [sample_fold_ovf]/[sample_fold_concat]/[sample_fold_trace]/[sample_fold_guard]) and
+    the R8-confirmation throw-payload samples ([sample_throw_bytes]/[sample_throw_tagged]).
+    Proven in theories/Fold.v. *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
@@ -329,6 +334,94 @@ Definition sample_now : tm :=
      [(PSome, Ret (VPair (VVar 2) (VVar 0)))]
      (Ret VNone))).
 
+(* ===== R6 samples (adr-0012-list-elimination) + R8 confirmation ============= *)
+
+(** FOLD body shared by the R6 samples: put the CURRENT ELEMENT at the key
+    [print(acc)] (the accumulator is a DInt counter, so elements land at keys
+    "0", "1", "2", … in iteration order), then step the counter via PAddChecked.
+
+    de Bruijn discipline inside a Fold body (adr-0012 §Decision 1): on entry
+    db0 = acc, db1 = elem (push_env [elem; acc]). Annotated per step:
+      Bind (Prim PPrintInt [acc=db0])        — then db0 = print result, db1 = acc, db2 = elem
+      Match PSome (binds the key bytes)      — then db0 = key, db1 = print result,
+                                                    db2 = acc, db3 = elem
+      Bind (Perform OPut [key=db0; elem=db3]) — then db0 = put unit, …, db3 = acc, db4 = elem
+      Bind (Prim PAddChecked [acc=db3; 1])   — then db0 = add result
+      Match PSome -> Ret db0 (the next acc); DNone (overflow) -> OThrow ovf_bytes.
+    The PPrintInt default arm (DNone — impossible for an in-range counter) throws
+    err_bytes so a violation would be loudly observable. *)
+Definition fold_put_body : tm :=
+  Bind (Prim PPrintInt [VVar 0])
+  (Match (VVar 0)
+     [(PSome,
+        (* db0 = key bytes, db1 = print result, db2 = acc, db3 = elem *)
+        Bind (Perform OPut [VVar 0; VVar 3])
+        (* db0 = put unit, db1 = key, db2 = print result, db3 = acc, db4 = elem *)
+        (Bind (Prim PAddChecked [VVar 3; VInt 1])
+           (Match (VVar 0)
+              [(PSome, Ret (VVar 0))]           (* db0 = acc+1 = the next acc *)
+              (Perform OThrow [VBytes ovf_bytes]))))]
+     (Perform OThrow [VBytes err_bytes])).
+
+(** FOLD (R6, adr-0012): fold the CONTEXT list with the effectful body above —
+    each element is Put at its iteration-index key; the result is the element
+    count (DInt n). Non-DList context: empty fold, result DInt 0, no puts. *)
+Definition sample_fold_put : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret (VInt 0)) fold_put_body).
+
+(** FOLD accumulator-overflow path: same body, but the counter STARTS at int64_max,
+    so the first element overflows PAddChecked and the body throws ovf_bytes (the
+    element itself is still Put first — exactly the pre-abort effects commit).
+    Empty/non-list context: result DInt int64_max, no puts. *)
+Definition sample_fold_ovf : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret (VInt int64_max)) fold_put_body).
+
+(** FOLD order observability via a NON-COMMUTATIVE accumulator (PBytesConcat):
+    acc ++ elem, left to right — a list of byte strings and its reverse yield
+    observably different bytes. db0 = acc, db1 = elem. *)
+Definition sample_fold_concat : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret (VBytes [])) (Prim PBytesConcat [VVar 0; VVar 1])).
+
+(** FOLD order observability via the TRACE: emit each element left to right; the
+    accumulator is untouched (init DUnit, body returns it). After the OTrace Bind,
+    db0 = unit, db1 = acc, db2 = elem — the body result Ret (VVar 1) is the acc. *)
+Definition sample_fold_trace : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret VUnit)
+             (Bind (Perform OTrace [VVar 1]) (Ret (VVar 1)))).
+
+(** FOLD error short-circuit: like [sample_fold_put], but a poison element
+    ("BAD") makes the body THROW — the fold aborts mid-list with OErr, and the
+    store shows EXACTLY the puts of the elements before the poison. The PBytes
+    guard binds 0 variables, so the default arm sees db0 = acc, db1 = elem
+    unchanged and can be [fold_put_body] verbatim. *)
+Definition poison_bytes : list ascii := list_ascii_of_string "BAD".
+
+Definition sample_fold_guard : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret (VInt 0))
+             (Match (VVar 1)
+                [(PBytes poison_bytes, Perform OThrow [VBytes poison_bytes])]
+                fold_put_body)).
+
+(** R8 CONFIRMATION (theories/Fold.v §R8): error values carry arbitrary dvals —
+    including exact byte-string messages — and have since R1/M1 ([OThrow] takes any
+    val; [OErr e] carries any dval). These two samples make that DELIBERATE:
+    [sample_throw_bytes] aborts with an exact DBytes message after one committed
+    put; [sample_throw_tagged] aborts with a DTag-structured payload (tag 2 over
+    a (message, code) pair). *)
+Definition throw_msg_bytes : list ascii := list_ascii_of_string "boom: k missing".
+
+Definition sample_throw_bytes : tm :=
+  Bind (Perform OPut [VBytes key1; VInt 1])
+       (Perform OThrow [VBytes throw_msg_bytes]).
+
+Definition sample_throw_tagged : tm :=
+  Perform OThrow [VTag 2 (VPair (VBytes throw_msg_bytes) (VInt 404))].
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -357,4 +450,11 @@ Definition all_programs : list (string * tm) :=
     ("sample_persist"%string, sample_persist);
     ("sample_setdl_missing"%string, sample_setdl_missing);
     ("sample_now"%string, sample_now);
+    ("sample_fold_put"%string, sample_fold_put);
+    ("sample_fold_ovf"%string, sample_fold_ovf);
+    ("sample_fold_concat"%string, sample_fold_concat);
+    ("sample_fold_trace"%string, sample_fold_trace);
+    ("sample_fold_guard"%string, sample_fold_guard);
+    ("sample_throw_bytes"%string, sample_throw_bytes);
+    ("sample_throw_tagged"%string, sample_throw_tagged);
     ("demo_prog"%string, demo_prog) ].

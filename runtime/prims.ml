@@ -181,3 +181,41 @@ let prim_print_int (v : Rval.t) : Rval.t =
         let s = Z.to_string z in  (* zarith produces the canonical decimal string *)
         Rval.Some (Rval.Bytes (Bytes.of_string s))
   | _ -> Rval.None
+
+(** [prim_mul_checked a b]: Z multiplication, [Rval.None] if result leaves int64 range.
+    Mirrors [EffIR.apply_mul_checked] (R6, adr-0012). NB the asymmetric boundary:
+    -1 * int64_min = 2^63 > int64_max -> None. *)
+let prim_mul_checked (a : Rval.t) (b : Rval.t) : Rval.t =
+  match a, b with
+  | Rval.Int za, Rval.Int zb ->
+      let r = Z.mul za zb in
+      if in_range r then Rval.Some (Rval.Int r)
+      else Rval.None
+  | _ -> Rval.None  (* shape mismatch *)
+
+(** [prim_list_len l]: length of a list value; result is [Rval.Int].
+    Mirrors [EffIR.apply_prim PListLen] (R6, adr-0012). *)
+let prim_list_len (l : Rval.t) : Rval.t =
+  match l with
+  | Rval.List vs -> Rval.Int (Z.of_int (List.length vs))
+  | _ -> Rval.None
+
+(** [prim_list_nth l i]: the i-th element (0-based), option-encoded.
+    Mirrors [EffIR.apply_list_nth] (R6, adr-0012).
+    Decision points:
+      DN1: i < 0            -> None
+      DN2: length <= i      -> None  (checked in Z, like the Rocq reference, BEFORE any
+                                      int conversion — an index beyond native-int range
+                                      must be rejected here, not raise Z.Overflow; the
+                                      prim_bytes_sub DS3 lesson above)
+      DN3: otherwise        -> Some v_i (i now provably fits in int: i < length) *)
+let prim_list_nth (l : Rval.t) (i : Rval.t) : Rval.t =
+  match l, i with
+  | Rval.List vs, Rval.Int zi ->
+      (* DN1: i < 0 *)
+      if Z.sign zi < 0 then Rval.None
+      (* DN2: length <= i — in Z, before Z.to_int *)
+      else if Z.leq (Z.of_int (List.length vs)) zi then Rval.None
+      (* DN3: in bounds *)
+      else Rval.Some (List.nth vs (Z.to_int zi))
+  | _ -> Rval.None

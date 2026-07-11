@@ -23,7 +23,12 @@
       G16 "-"                          -> bare minus (ERR)
 
     Seeds are logged; every counterexample is printed with its seed for corpus replay.
-    Reference == fast byte-identical is asserted for every tested input. *)
+    Reference == fast byte-identical is asserted for every tested input.
+
+    R6 (adr-0012-list-elimination) adds direct apply_prim-vs-realizer rounds for
+    PMulChecked (int64 boundaries incl. the asymmetric -1 * int64_min = 2^63 overflow)
+    and PListLen/PListNth (index bias -1 / 0 / len-1 / len / huge-Z beyond native int;
+    mixed-shape and empty lists; shape mismatches). *)
 
 module E   = Ref_extracted.EffIR
 module D   = Ref_extracted.Datatypes
@@ -187,6 +192,17 @@ let gen_bytes () : bytes =
   | _ -> Bytes.init (Random.State.int rng 12)
            (fun _ -> Char.chr (Random.State.int rng 256))
 
+(** Mixed-shape list values for the R6 list prims (incl. empty). *)
+let gen_list_val () : Rkv.Rval.t =
+  let n = Random.State.int rng 7 in
+  Rkv.Rval.List
+    (List.init n (fun i ->
+         match Random.State.int rng 4 with
+         | 0 -> Rkv.Rval.Int (Z.of_int i)
+         | 1 -> Rkv.Rval.Bytes (gen_bytes ())
+         | 2 -> Rkv.Rval.Unit
+         | _ -> Rkv.Rval.Pair (Rkv.Rval.Int (Z.of_int i), Rkv.Rval.Bool true)))
+
 let prim_fails = ref 0
 
 let check_prim (name : string) (p : E.prim) (impl : Rkv.Rval.t list -> Rkv.Rval.t)
@@ -238,7 +254,25 @@ let direct_prim_pass () =
      | Rkv.Rval.Some (Rkv.Rval.Bytes s) ->
          check_prim "parse_int64" E.PParseInt64 (app1 Rkv.Prims.prim_parse_int64)
            [Rkv.Rval.Bytes s]
-     | _ -> ())
+     | _ -> ());
+    (* R6 prims (adr-0012): mul boundaries + list len/nth with index bias *)
+    check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked) [ia; ib];
+    let lv = gen_list_val () in
+    let llen = (match lv with Rkv.Rval.List l -> List.length l | _ -> 0) in
+    check_prim "list_len" E.PListLen (app1 Rkv.Prims.prim_list_len) [lv];
+    (* index bias: -1 / 0 / len-1 / len / huge-Z / random (adr-0012 §implementers) *)
+    let idx =
+      match Random.State.int rng 7 with
+      | 0 -> Z.of_int (-1)
+      | 1 -> Z.zero
+      | 2 -> Z.of_int (llen - 1)
+      | 3 -> Z.of_int llen
+      | 4 -> Z.of_string "1180591620717411303424"  (* 2^70: beyond native int *)
+      | 5 -> Z.neg (Z.of_string "1180591620717411303424")
+      | _ -> Z.of_int (Random.State.int rng (llen + 2))
+    in
+    check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+      [lv; Rkv.Rval.Int idx]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -252,12 +286,44 @@ let direct_prim_pass () =
     [Rkv.Rval.Int int64_max; Rkv.Rval.Int Z.one];
   check_prim "sub_checked" E.PSubChecked (app2 Rkv.Prims.prim_sub_checked)
     [Rkv.Rval.Int int64_min; Rkv.Rval.Int Z.one];
+  (* R6 fixed adversarial cases: int64 multiplication boundaries — incl. the ASYMMETRIC
+     -1 * int64_min = 2^63 overflow (in range for |min| but not for max) *)
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int int64_max; Rkv.Rval.Int (Z.of_int 2)];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int (Z.of_int (-1)); Rkv.Rval.Int int64_min];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int int64_min; Rkv.Rval.Int (Z.of_int (-1))];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int int64_max; Rkv.Rval.Int Z.one];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int int64_min; Rkv.Rval.Int Z.one];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Int (Z.of_int 1000); Rkv.Rval.Int (Z.of_string "9007199254740")];
+  (* R6 fixed adversarial cases: list_nth on huge Z indices (must be DNone, never
+     Z.Overflow — the prim_bytes_sub lesson) and exact len-1/len edges *)
+  let l3 = Rkv.Rval.List [Rkv.Rval.Int Z.zero; Rkv.Rval.Unit; Rkv.Rval.Bytes Bytes.empty] in
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth) [l3; huge];
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+    [l3; Rkv.Rval.Int (Z.of_int (-1))];
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+    [l3; Rkv.Rval.Int (Z.of_int 2)];
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+    [l3; Rkv.Rval.Int (Z.of_int 3)];
+  check_prim "list_len" E.PListLen (app1 Rkv.Prims.prim_list_len) [Rkv.Rval.List []];
   (* shape mismatches: both sides must agree on DNone *)
   check_prim "add_checked" E.PAddChecked (app2 Rkv.Prims.prim_add_checked)
     [Rkv.Rval.Bytes (Bytes.of_string "1"); Rkv.Rval.Int Z.one];
   check_prim "bytes_len" E.PBytesLen (app1 Rkv.Prims.prim_bytes_len) [Rkv.Rval.Int Z.zero];
   check_prim "eq_bytes" E.PEqBytes (app2 Rkv.Prims.prim_eq_bytes)
-    [Rkv.Rval.Unit; Rkv.Rval.Bytes Bytes.empty]
+    [Rkv.Rval.Unit; Rkv.Rval.Bytes Bytes.empty];
+  check_prim "mul_checked" E.PMulChecked (app2 Rkv.Prims.prim_mul_checked)
+    [Rkv.Rval.Bytes (Bytes.of_string "2"); Rkv.Rval.Int Z.one];
+  check_prim "list_len" E.PListLen (app1 Rkv.Prims.prim_list_len) [Rkv.Rval.Int Z.zero];
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+    [Rkv.Rval.Int Z.zero; Rkv.Rval.Int Z.zero];
+  check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
+    [l3; Rkv.Rval.Bytes (Bytes.of_string "0")]
 
 (* --- main ------------------------------------------------------------------ *)
 
@@ -334,7 +400,7 @@ let () =
     !cover_g6 !cover_g7 !cover_g8 !cover_g9 !cover_g10
     !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16;
   if !fails = 0 && !prim_fails = 0 && cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 9 realizers direct); coverage asserted"
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 12 realizers direct); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";
