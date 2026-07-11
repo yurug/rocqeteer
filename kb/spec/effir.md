@@ -1,10 +1,10 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R6 grammar (list elimination via bounded Fold + list prims, on top of the expiring bytes-keyed store + Time), typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R9 grammar (append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-12
-depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination]
+depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination, adr-0013-journal-effect]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 ---
@@ -12,16 +12,18 @@ related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
 
 > ⚠ **Slice-1 status:** the built subset differs — `VZero`/`VSucc` instead of `VPrim (list val)`,
 > no `typecheck_ir.ml`.
-> R2 (2026-07-10): general `Match` replaces `MatchOpt` ([[adr-0008-general-match]]).
-> R3 (2026-07-10): `Prim` term + closed v1 prim set ([[adr-0009-vprim-registry]]).
+> R2/R3 (2026-07-10): general `Match` replaces `MatchOpt` ([[adr-0008-general-match]]); `Prim`
+> term + closed v1 prim set ([[adr-0009-vprim-registry]]).
 > R7 (2026-07-11): `DTag`/`VTag`, `DList`/`VList`, `PTag` ([[adr-0010-structured-values]]).
 > R4+R5 (2026-07-11): expiring **bytes-keyed store** (live iff `now_ms <= d`) + `Time`/`ONow`
 > ([[adr-0011-time-and-expiring-store]]).
 > R6 (2026-07-12): `Fold` term (the ONE list elimination) + prims
 > `PMulChecked`/`PListLen`/`PListNth` ([[adr-0012-list-elimination]]; `theories/Fold.v`).
 > R8 (2026-07-12): CONFIRMED CLOSED — error values carry **arbitrary dvals** incl. exact byte
-> messages and `DTag` payloads; true since R1/M1 (`OThrow` takes any val), made deliberate by
-> the payload-pinning theorems in `theories/Fold.v` §R8. No new machinery.
+> messages and `DTag` payloads; true since R1/M1, made deliberate in `theories/Fold.v` §R8.
+> R9 (2026-07-12): **Journal** effect — `world.journal` + `OJournal` (append-only, write-only;
+> frame law + run-sequence fold lemma proven GENERALLY in `theories/Journal.v`) and the
+> `PDivFloor` prim ([[adr-0013-journal-effect]]).
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -54,8 +56,8 @@ val ::= VVar n                       (* de Bruijn index into the binder context 
       | VTag Z val                   (* tagged sum injection; evals to DTag z (eval_val env a) (IR v2 R7) *)
       | VList (list val)             (* finite sequence; evals to DList (map (eval_val env) vs) (IR v2 R7) *)
 ```
-`prim` names resolve through the runtime manifest ([[runtime-manifest]]); an unregistered prim is a codegen
-error ([[error-taxonomy]]).
+`prim` names resolve through the runtime manifest ([[runtime-manifest]]); an unregistered prim is a
+codegen error ([[error-taxonomy]]). New prims are ADR-free but manifest + diff-test mandatory (adr-0009).
 
 ## Closed v1 primitive set (`prim`) — IR v2 R3 (adr-0009-vprim-registry)
 All prims are TOTAL. Fallible ones return **option-encoded dvals** (`DNone` / `DSome result`)
@@ -73,21 +75,18 @@ PPrintInt     DInt z          -> DSome (DBytes decimal) if in-range, DNone if no
 PMulChecked   DInt a, DInt b  -> DSome (DInt (a*b)) if in range, else DNone (R6; NB -1 * int64_min = 2⁶³ -> DNone)
 PListLen      DList vs        -> DInt (length vs); shape mismatch -> DNone  (R6)
 PListNth      DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6; bound checked in Z)
+PDivFloor     DInt a, DInt b  -> DNone if b = 0 or result exits int64 (only int64_min / -1), else DSome
+              (DInt (a/b)) — FLOOR (Rocq Z.div; realizer Z.fdiv, zarith Z.div truncates; driver: TTL rounding)
 ```
 **Strict parse grammar (DP1-DP8):**
-1. DP1: empty input → DNone
-2. DP2: leading '-' → set negative flag, advance
-3. DP3: digits empty after sign → DNone (bare '-')
-4. DP4: leading '0' → must be exactly "0"; more chars after → DNone ("-0" also → DNone)
-5. DP5: leading non-digit ('+', space, other) → DNone
-6. DP6: parse all remaining digits; non-digit in body → DNone
-7. DP7: apply sign
-8. DP8: range check [−2⁶³, 2⁶³−1] → DNone if outside
+DP1 empty input → DNone · DP2 leading '-' → negative, advance · DP3 digits empty after
+sign (bare '-') → DNone · DP4 leading '0' → must be exactly "0"; more chars → DNone ("-0"
+too) · DP5 leading non-digit ('+', space, other) → DNone · DP6 parse remaining digits,
+non-digit in body → DNone · DP7 apply sign · DP8 range check [−2⁶³, 2⁶³−1] → DNone outside
 
 Round-trip law: `apply_prim PPrintInt [DInt z] = DSome (DBytes bs)` implies
-`apply_prim PParseInt64 [DBytes bs] = DSome (DInt z)` for all in-range z.
-Proven for ALL in-range z (`parse_print_roundtrip` in `theories/Prims.v`); the critical
-boundary values (0, ±1, int64_min/max) additionally have concrete vm_compute instances.
+`apply_prim PParseInt64 [DBytes bs] = DSome (DInt z)` — proven for ALL in-range z
+(`parse_print_roundtrip`, `theories/Prims.v`); 0/±1/int64_min/max also have vm_compute instances.
 
 ## Effectful computations (`tm`)
 ```
@@ -103,38 +102,42 @@ tm ::= Ret val                       (* pure result *)
 result as a dval. Bind sequences the result. Codegen emits `let vN = Prims.prim_<name> ... in`.
 
 `Fold lst init body` ([[adr-0012-list-elimination]]): evaluate `lst`; run `init` for the starting acc;
-per `DList` element **left to right**, run `body` with `push_env [elem; acc]` (**acc = db 0, elem =
-db 1**); `body`'s result is the next acc; the final acc is the result. `OErr` from `init` or any
-iteration short-circuits; the world threads. Non-`DList` scrutinee = **empty fold** (`init`'s result;
-its effects still run once); R10 rejects it statically. Totality is structural on the finite list (no
-fuel). Codegen: native `List.fold_left (fun acc elem -> BODY)`, binders `[acc; elem]` = db 0/1.
-Proofs: `theories/Fold.v` (effectful end-to-end, order + fold-right mutant, short-circuit, boundaries).
+per `DList` element **left to right**, run `body` with `push_env [elem; acc]` (**acc = db 0, elem = db 1**);
+`body`'s result is the next acc; the final acc is the result. `OErr` from `init` or any iteration
+short-circuits; the world threads. Non-`DList` scrutinee = **empty fold** (`init`'s result; its effects
+still run once); R10 rejects it statically. Totality is structural on the finite list (no fuel). Codegen:
+native `List.fold_left (fun acc elem -> BODY)`, binders `[acc; elem]` = db 0/1. Proofs: `theories/Fold.v`.
 
-`op` references an operation of a declared effect signature ([[effect-signatures]]); its argument and
-return types are fixed by that declaration.
+`op` references an operation of a declared effect signature ([[effect-signatures]]); its argument
+and return types are fixed by that declaration. `run_top` takes `ctx` and `now`.
 
-### Ops and the world — v2 R4+R5 ([[adr-0011-time-and-expiring-store]])
+### Ops and the world — v2 R4+R5 ([[adr-0011-time-and-expiring-store]]), R9 ([[adr-0013-journal-effect]])
 The `world` record bundles ALL ambient effect state: `kv` (the expiring store: a map from
 byte-string keys to `(dval * option Z)` — value + optional absolute deadline in ms),
 `ctx` (read-only Env context), `now_ms : Z` (the run's single instant, IMMUTABLE within a
-run — the harness advances the clock between runs), `trace` (newest-first log), and
-`cache` (bytes-keyed memo, kept out of `observe`). **Liveness is the ONE rule**: `(v, Some d)`
-is live iff `now_ms <= d` (alive AT the deadline, dead at d+1ms; oracle-validated,
+run — the harness advances the clock between runs), `trace` (newest-first log),
+`cache` (bytes-keyed memo, kept out of `observe`), and `journal : list (Z * dval)` (R9:
+append-only, newest-first, exposed CHRONOLOGICALLY by `observe_full` alongside the trace;
+write-only — no op reads it: frame law + run-sequence fold lemma, `theories/Journal.v`).
+**Liveness is the ONE rule**: `(v, Some d)` is live iff `now_ms <= d` (alive AT the deadline, dead at d+1ms; oracle-validated,
 12,500 cases); `(v, None)` is always live; expired = absent for every op AND for `observe`
 (which filters by `now_ms`). Store op table (keys are `VBytes`; malformed args → `Dstuck`):
 ```
 OGet         [k]     -> DNone | DSome v                       (live bindings only)
 OPut         [k; v]  -> DUnit    stores v and CLEARS any deadline
 ODelete      [k]     -> DBool    true iff a LIVE binding was removed
-OGetDeadline [k]     -> DNone (no live k) | DSome DNone (live, no deadline)
-                        | DSome (DSome (DInt d))
+OGetDeadline [k]     -> DNone (no live k) | DSome DNone (live, no deadline) | DSome (DSome (DInt d))
 OSetDeadline [k; VNone | VSome (VInt d)] -> DBool  true iff a live binding was modified
 ONow         []      -> DInt now_ms                            (Time; no clock advance in-IR)
+OJournal     [v]     -> DUnit    appends (now_ms, eval v) to world.journal (R9; entries of one
+                        run share the run's instant; entries are plain dvals — consumers
+                        encode commands via DTag/DList, no entry grammar in-IR)
 OThrow [e] · OAsk [] · OTrace [v] · OCacheGet [k] · OCachePut [k; v]   (unchanged)
 ```
-TTL policy (rounding, negative-expire-deletes, reply codes) is consumer-side, NOT IR
-semantics. `run_top` takes `ctx` and `now`; proofs: `theories/TimeStore.v` (boundary +
-`<`-mutant rejection), `theories/KV.v` (`incr_correct` over the store, any instant).
+TTL policy (rounding, negative-expire-deletes, reply codes) is consumer-side, NOT IR semantics;
+journal durability/fsync/replay-equivalence are consumer-side too (the realizer streams to a
+sink — trusted via [[runtime-manifest]], never proven). Proofs: `theories/TimeStore.v` (boundary +
+`<`-mutant rejection), `theories/KV.v` (`incr_correct`), `theories/Journal.v` (order/frame/composition).
 
 ### Patterns (`pat`) — IR v2 R2 (adr-0008-general-match), R7 (adr-0010-structured-values)
 ```
@@ -151,23 +154,21 @@ branch runs its body with bound payloads pushed left-to-right (last payload = de
 Binder convention for PPair: `match_pat PPair (DPair a b) = Some [a; b]`; `push_env` pushes left-to-right,
 so db0 = b (last pushed), db1 = a. `PTag z` matches `DTag z' v` iff `Z.eqb z z'`, yielding `[v]` (1 binder).
 
-No nesting of patterns; no PVar/PWild (the default arm covers wildcards).
-Match need not be exhaustive — the default arm handles all unmatched cases.
+No nesting of patterns; no PVar/PWild — Match need not be exhaustive: the default arm covers all
+unmatched cases (and wildcards).
 
 ## Structured values (R7, adr-0010-structured-values)
 `DTag`/`VTag` inject a Z-tagged sum (multi-payload constructors nest `DPair`; nullary payloads use
 `DUnit`); `DList`/`VList` build a finite sequence of values. Both are domain-neutral — a consumer
 represents its own ADT by choosing tag numbers and composing `DPair`/`DTag`/`DList`. `DList` is
-constructible, observable, and (since R6) eliminated by `Fold` / `PListLen` / `PListNth` — no
-PNil/PCons patterns in v1 ([[adr-0012-list-elimination]] §Decision 4). `Match` dispatches on `DTag`
-via `PTag`; a mis-tagged or non-`DTag` scrutinee falls to the mandatory default arm (same posture as
-adr-0009's option-encoding: the R10 typechecker will later flag this statically).
+constructible, observable, and (since R6) eliminated by `Fold` / `PListLen` / `PListNth` — no PNil/PCons
+patterns in v1 ([[adr-0012-list-elimination]] §Decision 4). `Match` dispatches on `DTag` via `PTag`; a
+mis-tagged or non-`DTag` scrutinee falls to the default arm (the R10 typechecker will flag it statically).
 
 ## Binding discipline
-De Bruijn indices throughout. `Bind t1 t2` extends the context by one for `t2`. `Match` branches extend the
-context by the pattern's bound-variable count. A surface notation layer may present named variables; it
-elaborates to de Bruijn before anything else runs. Well-scopedness (every `VVar n` has `n < |context|`) is
-a typechecker invariant.
+De Bruijn indices throughout. `Bind t1 t2` extends the context by one for `t2`; `Match` branches extend it
+by the pattern's bound-variable count. A surface notation layer may present named variables (elaborated to
+de Bruijn before anything runs). Well-scopedness (`VVar n` has `n < |context|`) is a typechecker invariant.
 
 ## Typing (sketch)
 Judgements `Γ ⊢ v : ty` (pure) and `Γ ⊢ t ÷ ty ! E` (computation of result type `ty`, effects in signature
@@ -179,9 +180,9 @@ The IR typechecker (`codegen/typecheck_ir.ml`) enforces arities, return types, s
 **before** emission; failure is a codegen error, never a silent cast.
 
 ## In scope (v1)
-`Ret`/`Bind`/`Perform`/`Match`; the value forms above; registered pure prims; a single effect or an
-explicit sum of effects ([[effect-signatures]]); top-level non-recursive definitions (slice 1). Recursion
-(structural / bounded-int / fuel) is added **after** the KV slice is green — see [[adr-0006-vertical-slice]].
+`Ret`/`Bind`/`Perform`/`Match`; the value forms above; registered pure prims; a single effect or an explicit
+sum of effects ([[effect-signatures]]); top-level non-recursive definitions (slice 1). Recursion (structural
+/ bounded-int / fuel) came after the KV slice went green — see [[adr-0006-vertical-slice]].
 
 ## Out of scope (v1) — codegen MUST fail loudly (report §7.5)
 First-class functions/closures in `val`; higher-order effect operations; dependent matches that would need
@@ -194,6 +195,5 @@ to unregistered prims/effects. A failed codegen beats an unsound one.
 > continuation lives — as a sub-term, not a closure. Do not collapse `val` and `tm` into one `expr`.
 
 ## Related files
-- `spec/effect-signatures.md` — how `op`s and effect sums are declared and typed.
-- `spec/reference-semantics.md` — the interpreter over `tm`.
-- `spec/codegen.md` — the syntactic lowering of each `val`/`tm` form to OCaml.
+- `spec/effect-signatures.md` — op/effect-sum declarations; `spec/reference-semantics.md` — the
+  interpreter over `tm`; `spec/codegen.md` — the syntactic lowering of each `val`/`tm` form to OCaml.

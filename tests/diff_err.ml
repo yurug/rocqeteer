@@ -29,7 +29,7 @@ let ref_obs (term : E.tm) (pairs : (Z.t * Z.t) list) : obs =
   in
   let oc, bindings =
     match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 term with
-    | D.Coq_pair (D.Coq_pair (o, bs), _tr) -> (o, bs)
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (o, bs), _tr), _jr) -> (o, bs)
   in
   let err =
     match oc with

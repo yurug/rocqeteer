@@ -28,7 +28,13 @@
     R6 (adr-0012-list-elimination) adds direct apply_prim-vs-realizer rounds for
     PMulChecked (int64 boundaries incl. the asymmetric -1 * int64_min = 2^63 overflow)
     and PListLen/PListNth (index bias -1 / 0 / len-1 / len / huge-Z beyond native int;
-    mixed-shape and empty lists; shape mismatches). *)
+    mixed-shape and empty lists; shape mismatches).
+
+    R9 (adr-0013 milestone; adr-0009 discipline) adds PDivFloor direct rounds with
+    boundary bias: NEGATIVE dividends — floor and truncation DIFFER there, and both
+    sides must say (-7)/2 = -4 (the realizer uses Z.fdiv; zarith's Z.div truncates);
+    divisor 0 -> None with no exception; int64 boundaries incl. int64_min / -1 -> None (range);
+    shape mismatches. *)
 
 module E   = Ref_extracted.EffIR
 module D   = Ref_extracted.Datatypes
@@ -272,7 +278,21 @@ let direct_prim_pass () =
       | _ -> Z.of_int (Random.State.int rng (llen + 2))
     in
     check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
-      [lv; Rkv.Rval.Int idx]
+      [lv; Rkv.Rval.Int idx];
+    (* R9 prim: floor division with a divisor biased to 0 / ±1 / ±2 (0 exercises the
+       no-exception None path; ±1/±2 with negative random dividends exercise the
+       floor-vs-truncation boundary on every round) *)
+    let db =
+      match Random.State.int rng 6 with
+      | 0 -> Z.zero
+      | 1 -> Z.one
+      | 2 -> Z.minus_one
+      | 3 -> Z.of_int 2
+      | 4 -> Z.of_int (-2)
+      | _ -> zb
+    in
+    check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
+      [ia; Rkv.Rval.Int db]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -323,7 +343,39 @@ let direct_prim_pass () =
   check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
     [Rkv.Rval.Int Z.zero; Rkv.Rval.Int Z.zero];
   check_prim "list_nth" E.PListNth (app2 Rkv.Prims.prim_list_nth)
-    [l3; Rkv.Rval.Bytes (Bytes.of_string "0")]
+    [l3; Rkv.Rval.Bytes (Bytes.of_string "0")];
+  (* R9 fixed adversarial cases: PDivFloor. The VALUE is asserted (not just ref==fast)
+     on the floor/truncation discriminator: (-7)/2 = -4 on BOTH sides. *)
+  let zi n = Rkv.Rval.Int (Z.of_int n) in
+  let assert_div a b expect what =
+    let r = ref_prim E.PDivFloor [a; b] and f = Rkv.Prims.prim_div_floor a b in
+    if not (Rkv.Rval.equal r expect && Rkv.Rval.equal f expect) then begin
+      incr prim_fails;
+      Printf.printf
+        "DIV_FLOOR VALUE FAIL (RSEED=%d) %s: expected %s, ref=%s fast=%s\n"
+        seed what (Rkv.Rval.to_string expect)
+        (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+    end
+  in
+  assert_div (zi (-7)) (zi 2) (Rkv.Rval.Some (zi (-4))) "(-7)/2 floor (trunc would be -3)";
+  assert_div (zi 7) (zi (-2)) (Rkv.Rval.Some (zi (-4))) "7/(-2) floor";
+  assert_div (zi (-7)) (zi (-2)) (Rkv.Rval.Some (zi 3)) "(-7)/(-2) floor";
+  assert_div (zi 7) (zi 2) (Rkv.Rval.Some (zi 3)) "7/2";
+  assert_div (zi 5) (zi 0) Rkv.Rval.None "x/0 -> None (no exception)";
+  assert_div (zi 0) (zi 0) Rkv.Rval.None "0/0 -> None";
+  assert_div (Rkv.Rval.Int int64_min) (zi (-1)) Rkv.Rval.None
+    "int64_min / -1 overflows int64 -> None (range-checked)";
+  assert_div (Rkv.Rval.Int int64_min) (zi 1)
+    (Rkv.Rval.Some (Rkv.Rval.Int int64_min)) "int64_min / 1";
+  assert_div (Rkv.Rval.Int int64_max) (zi (-1))
+    (Rkv.Rval.Some (Rkv.Rval.Int (Z.neg int64_max))) "int64_max / -1";
+  assert_div (Rkv.Rval.Int int64_max) (Rkv.Rval.Int int64_max)
+    (Rkv.Rval.Some (zi 1)) "max/max";
+  (* shape mismatches: both sides must agree on None *)
+  check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
+    [Rkv.Rval.Bytes (Bytes.of_string "7"); zi 2];
+  check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
+    [zi 7; Rkv.Rval.Unit]
 
 (* --- main ------------------------------------------------------------------ *)
 
@@ -400,7 +452,7 @@ let () =
     !cover_g6 !cover_g7 !cover_g8 !cover_g9 !cover_g10
     !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16;
   if !fails = 0 && !prim_fails = 0 && cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 12 realizers direct); coverage asserted"
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 13 realizers direct); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";

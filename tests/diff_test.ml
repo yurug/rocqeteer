@@ -19,7 +19,7 @@ let now = Z.zero
 let ref_observe () : (bytes * (Rkv.Rval.t * Z.t option)) list =
   let bindings =
     match E.observe_full E.DUnit (Coqconv.coqz_of_z now) E.M.empty E.prog0 with
-    | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, bs), _tr), _jr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun kv ->

@@ -31,6 +31,9 @@ assum_timestore=$(coqc -R _build/default/theories Rocqeteer -output-directory "$
 printf 'From Rocqeteer Require Import Fold.\nPrint Assumptions fold_mixed_end_to_end.\n' > "$tmpd/CheckF.v"
 assum_fold=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckF.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import Journal.\nPrint Assumptions run_journal_frame.\n' > "$tmpd/CheckJ.v"
+assum_journal=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckJ.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 [ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
@@ -38,6 +41,7 @@ rm -rf "$tmpd"
 [ -z "$assum_structval" ] && assum_structval="(capture failed)"
 [ -z "$assum_timestore" ] && assum_timestore="(capture failed)"
 [ -z "$assum_fold" ] && assum_fold="(capture failed)"
+[ -z "$assum_journal" ] && assum_journal="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -62,6 +66,7 @@ echo "- \`Print Assumptions parse_print_roundtrip\`: **${assum_prims}**"
 echo "- \`Print Assumptions tag_build_success\`: **${assum_structval}**"
 echo "- \`Print Assumptions alive_at_deadline\` (R4+R5 boundary, live iff now<=d): **${assum_timestore}**"
 echo "- \`Print Assumptions fold_mixed_end_to_end\` (R6 Fold, effectful left fold): **${assum_fold}**"
+echo "- \`Print Assumptions run_journal_frame\` (R9 Journal frame law, GENERAL — journal is write-only): **${assum_journal}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -88,8 +93,11 @@ echo "| prim_print_int | primitive | Prims.prim_print_int | diff_prims |"
 echo "| prim_mul_checked | primitive | Prims.prim_mul_checked | diff_prims |"
 echo "| prim_list_len | primitive | Prims.prim_list_len | diff_prims |"
 echo "| prim_list_nth | primitive | Prims.prim_list_nth | diff_prims |"
-echo "| Runtime_Prims_refines | assumption (tcb-assumption) | apply_prim == Prims.prim_* | diff_prims (3000 pipeline states G1-G16 + direct per-prim pass, all 12 prims) |"
+echo "| prim_div_floor | primitive | Prims.prim_div_floor (Z.fdiv — FLOOR, matching Rocq Z.div; divisor 0 -> None, no exception) | diff_prims |"
+echo "| Runtime_Prims_refines | assumption (tcb-assumption) | apply_prim == Prims.prim_* | diff_prims (3000 pipeline states G1-G16 + direct per-prim pass, all 13 prims) |"
 echo "| Runtime_Fold_refines | assumption (tcb-assumption) | Fold -> List.fold_left, [acc; elem] = db[0; 1]; order/short-circuit/non-list posture | diff_fold (400x5 rounds, F1-F8, order via trace) |"
+echo "| Journal (Append; buffer + optional sink, shared time source) | effect | Rkv.Journal | diff_journal |"
+echo "| Runtime_Journal_refines | assumption (tcb-assumption) | buffer == reference journal (chronological, run-instant timestamps); everything sink-onward (disk bytes, crash atomicity, fsync) is named consumer trust — durability NOT proven | diff_journal (300x3x2, J1-J9: order under Repeat/Fold, short-circuit, sink==buffer, two instants) |"
 echo "| value_tag | primitive | Rval.Tag (Z.t, Rval.t) | diff_structval |"
 echo "| value_list | primitive | Rval.List (Rval.t list) | diff_structval |"
 echo "| Runtime_StructVal_refines | assumption (tcb-assumption) | DTag/DList <-> Rval.Tag/Rval.List bridge + tag_build/tag_dispatch samples | diff_structval (2000+3000 sample states, 2000 fuzzed bridge round-trips, S1-S9 coverage) |"

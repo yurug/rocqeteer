@@ -27,7 +27,7 @@ let ref_state (ctx : Z.t) (pairs : (Z.t * Z.t) list)
   let bindings =
     match E.observe_full (E.DInt (Coqconv.coqz_of_z ctx)) (Coqconv.coqz_of_z now) m0
             S.sample_env with
-    | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, bs), _tr), _jr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->

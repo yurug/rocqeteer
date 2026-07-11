@@ -17,3 +17,7 @@ val prim_print_int    : Rval.t -> Rval.t
 val prim_mul_checked  : Rval.t -> Rval.t -> Rval.t
 val prim_list_len     : Rval.t -> Rval.t
 val prim_list_nth     : Rval.t -> Rval.t -> Rval.t
+
+(** FLOOR division (Z.fdiv — the Rocq reference's Z.div is floor, zarith's Z.div is
+    truncation); [Rval.None] on divisor 0 or shape mismatch — no exception (R9). *)
+val prim_div_floor    : Rval.t -> Rval.t -> Rval.t

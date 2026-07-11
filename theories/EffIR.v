@@ -1,5 +1,5 @@
-(** * EffIR — first-order effect IR (v2, R6: list elimination — bounded Fold + list prims)
-    and its reference semantics.
+(** * EffIR — first-order effect IR (v2, R9: Journal effect — append-only (now_ms, dval)
+    log) and its reference semantics.
 
     This is the SINGLE representation that the reference interpreter (here) evaluates
     and that the codegen lowers (after extraction to an OCaml ADT). Keeping one
@@ -45,7 +45,19 @@
     a typechecker, same posture as prim shape mismatch; R10 rejects it statically. Prims
     gain [PListLen]/[PListNth] (arity checks + indexed access) and [PMulChecked] (checked
     multiplication, e.g. seconds->ms scaling — same total/option-encoded style as
-    [PAddChecked]). No PNil/PCons patterns in v1 (adr-0012 §Decision 4). *)
+    [PAddChecked]). No PNil/PCons patterns in v1 (adr-0012 §Decision 4).
+
+    IR v2 R9 (2026-07-12, adr-0013-journal-effect): the Journal effect — [world] gains
+    [journal : list (Z * dval)] (newest-first, the Trace convention) and the one op
+    [OJournal [v] -> DUnit] appends [(now_ms, eval v)]. The timestamp is the run's single
+    instant (adr-0011: no in-IR clock advancement), so entries within one run share it by
+    design. NO op reads the journal — it is write-only by construction; the frame law
+    (a run's outcome and non-journal observables are independent of the initial journal,
+    and the final journal is new-entries ++ initial) is proven GENERALLY in
+    theories/Journal.v ([run_journal_frame]), alongside the run-sequence-is-a-fold
+    composition lemma. [observe_full] exposes the journal reversed (chronological),
+    alongside the trace. Also adds the prim [PDivFloor] (adr-0009 discipline: ADR-free,
+    manifest + diff-test mandatory) — FLOOR division, option-encoded division by zero. *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -111,11 +123,12 @@ Inductive val : Type :=
 
 (** ** Effect operations: Store (Get/Put/Delete/GetDeadline/SetDeadline — the expiring
     bytes-keyed store, R4), [ONow] (Time, R5), [OThrow] (Error), [OAsk] (Env), [OTrace]
-    (Trace), and [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
-    is observationally invisible) — kb/spec/effect-signatures.md, adr-0011. *)
+    (Trace), [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
+    is observationally invisible), and [OJournal] (Journal, R9 — append-only, write-only:
+    no op reads it back) — kb/spec/effect-signatures.md, adr-0011, adr-0013. *)
 Inductive op : Type :=
   | OGet | OPut | ODelete | OGetDeadline | OSetDeadline | ONow
-  | OThrow | OAsk | OTrace | OCacheGet | OCachePut.
+  | OThrow | OAsk | OTrace | OCacheGet | OCachePut | OJournal.
 
 (** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
     All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that
@@ -134,7 +147,8 @@ Inductive prim : Type :=
 | PPrintInt     (** DInt z -> DSome (DBytes decimal) if in-range, DNone if not *)
 | PMulChecked   (** DInt a, DInt b -> DSome (DInt (a*b)) if in-range, DNone otherwise (R6) *)
 | PListLen      (** DList vs -> DInt (length vs); shape mismatch -> DNone (R6) *)
-| PListNth.     (** DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6) *)
+| PListNth      (** DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6) *)
+| PDivFloor.    (** DInt a, DInt b -> DNone if b = 0, else DSome (DInt (a / b)) — FLOOR (R9) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -169,6 +183,21 @@ Definition apply_list_nth (vs : list dval) (i : Z) : dval :=
        | Some v => DSome v
        | None   => DNone   (* unreachable: the bound check guarantees in-range *)
        end.
+
+(** [apply_div_floor a b]: FLOOR division, option-encoded (R9 companion prim; adr-0009
+    discipline — ADR-free addition, manifest + diff-test mandatory). CONFIRMED: Rocq's
+    [Z.div] IS floor division (rounds toward -infinity: (-7)/2 = -4, 7/(-2) = -4; the
+    truncating variant is [Z.quot]) — the OCaml realizer must therefore use zarith's
+    [Z.fdiv], because zarith's [Z.div] truncates toward zero and DIFFERS on negative
+    dividends. Division by zero is total here: [DNone] (option-encoded failure, no
+    exception — the [Match] form handles it). Consumer driver: TTL-style rounding,
+    e.g. (pttl + 500) / 1000. Range-checked like the rest of the Checked family: with
+    int64-range inputs the only escaping result is int64_min / -1 = 2^63 -> DNone
+    (convention consistency over cleverness; R10 may bound it statically). *)
+Definition apply_div_floor (a b : Z) : dval :=
+  if b =? 0 then DNone
+  else let r := a / b in
+       if in_range r then DSome (DInt r) else DNone.
 
 (** [apply_cmp_int a b]: total three-way comparison; result is DInt −1, 0, or 1. *)
 Definition apply_cmp_int (a b : Z) : dval :=
@@ -314,6 +343,7 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
   | PMulChecked,  [DInt a; DInt b]     => apply_mul_checked a b
   | PListLen,     [DList vs]           => DInt (Z.of_nat (List.length vs))
   | PListNth,     [DList vs; DInt i]   => apply_list_nth vs i
+  | PDivFloor,    [DInt a; DInt b]     => apply_div_floor a b
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 
@@ -459,21 +489,26 @@ Definition find_live (now : Z) (k : string) (s : state) : option entry :=
     the Trace iteration). [kv] is the expiring store, [ctx] the read-only Env context,
     [now_ms] the run's single instant (R5: immutable within a run — a program executes
     atomically at one instant; the harness advances the clock BETWEEN runs, adr-0011
-    §Decision 1), [trace] the Trace log stored newest-first (reversed by [observe]). *)
+    §Decision 1), [trace] the Trace log stored newest-first (reversed by [observe]),
+    [journal] the R9 append-only Journal, also newest-first (reversed by [observe_full])
+    — write-only: [OJournal] appends [(now_ms, v)] and NO op reads it (adr-0013). *)
 Record world : Type := mkWorld {
-  kv     : state;
-  ctx    : dval;
-  now_ms : Z;          (* the run's instant; read by ONow and by store liveness *)
-  trace  : list dval;
-  cache  : memo;       (* memo store; deliberately NOT exposed by [observe] *)
+  kv      : state;
+  ctx     : dval;
+  now_ms  : Z;          (* the run's instant; read by ONow and by store liveness *)
+  trace   : list dval;
+  cache   : memo;       (* memo store; deliberately NOT exposed by [observe] *)
+  journal : list (Z * dval);  (* R9 append-only log, newest-first (adr-0013) *)
 }.
 
 Definition set_kv    (w : world) (m : state)     : world :=
-  mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache).
+  mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal).
 Definition set_trace (w : world) (l : list dval) : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache).
+  mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache) w.(journal).
 Definition set_cache (w : world) (c : memo)      : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c.
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c w.(journal).
+Definition set_journal (w : world) (l : list (Z * dval)) : world :=
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) l.
 
 (** ** Pure store handler over the map: the reference semantics of the store operations
     (adr-0011 §Decision 2 — the op table, verbatim):
@@ -553,6 +588,12 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
                          (ORet DUnit, set_cache w (M.add (string_of_list_ascii kb) v w.(cache)))
                      | _           => (ORet Dstuck, w)
                      end
+      | OJournal => match vs with
+                    | [v] => (* R9 (adr-0013): append (run instant, payload), newest-first;
+                                the result is DUnit — the journal is write-only. *)
+                        (ORet DUnit, set_journal w ((w.(now_ms), v) :: w.(journal)))
+                    | _   => (ORet Dstuck, w)
+                    end
       | _      => let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in (ORet r, set_kv w s')
       end
   | Match scrut branches default =>
@@ -619,9 +660,9 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
   end.
 
 (** Initial world: empty store, the given [c] context, the run's instant [now], empty
-    trace, empty cache. *)
+    trace, empty cache, empty journal. *)
 Definition init_world (c : dval) (now : Z) : world :=
-  mkWorld (M.empty entry) c now [] (M.empty dval).
+  mkWorld (M.empty entry) c now [] (M.empty dval) [].
 
 Definition run_top (c : dval) (now : Z) (t : tm) : outcome * world :=
   run [] t (init_world c now).
@@ -639,11 +680,12 @@ Definition observe (c : dval) (now : Z) (t : tm)
 
 (** Like [observe] but from a custom initial store state [s] (and context [c], instant
     [now]); the single entry point the differential tests use (they seed a non-empty
-    state, deadlines included). *)
+    state, deadlines included). R9 (adr-0013): the observable gains the JOURNAL, reversed
+    to chronological order — exactly like the trace. *)
 Definition observe_full (c : dval) (now : Z) (s : state) (t : tm)
-  : outcome * list (string * entry) * list dval :=
-  let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval)) in
-  (r, live_elements now w.(kv), rev w.(trace)).
+  : outcome * list (string * entry) * list dval * list (Z * dval) :=
+  let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval) []) in
+  (r, live_elements now w.(kv), rev w.(trace), rev w.(journal)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x).

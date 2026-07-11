@@ -24,7 +24,7 @@ let ref_obs (pairs : (Z.t * Z.t) list)
   in
   let bindings, tr =
     match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 S.sample_trace with
-    | D.Coq_pair (D.Coq_pair (_o, bs), t) -> (bs, t)
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, bs), t), _jr) -> (bs, t)
   in
   let state =
     Coqconv.list_of_coq bindings

@@ -14,7 +14,11 @@
     R6 (adr-0012-list-elimination) adds the [Fold] samples ([sample_fold_put]/
     [sample_fold_ovf]/[sample_fold_concat]/[sample_fold_trace]/[sample_fold_guard]) and
     the R8-confirmation throw-payload samples ([sample_throw_bytes]/[sample_throw_tagged]).
-    Proven in theories/Fold.v. *)
+    Proven in theories/Fold.v.
+
+    R9 (adr-0013-journal-effect) adds [sample_journal] (mixed-shape journal entries,
+    one appended inside a Fold body) and [sample_journal_throw] (Repeat-driven appends,
+    then a throw — pre-throw entries survive). Proven in theories/Journal.v. *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
@@ -422,6 +426,40 @@ Definition sample_throw_bytes : tm :=
 Definition sample_throw_tagged : tm :=
   Perform OThrow [VTag 2 (VPair (VBytes throw_msg_bytes) (VInt 404))].
 
+(* ===== R9 samples (adr-0013-journal-effect) ================================= *)
+
+(** JOURNAL (R9, adr-0013): [sample_journal] appends MIXED-SHAPE entries — a DBytes
+    message, a DTag-structured "command" (tag 5 over a (bytes, code) pair), then one
+    entry per CONTEXT list element via a Fold body (further shapes, incl. nested
+    DTag/DList, come from the context). The Fold body is sample_fold_trace-shaped:
+    on entry db0 = acc, db1 = elem; after the OJournal Bind, db0 = unit, db1 = acc,
+    db2 = elem — the body result Ret (VVar 1) is the acc (DUnit throughout). All
+    entries share the run's single instant (adr-0011: no in-IR clock advancement).
+    Entry order + timestamps + the frame law are proven in theories/Journal.v. *)
+Definition jmsg_bytes : list ascii := list_ascii_of_string "j-open".
+Definition jtag_bytes : list ascii := list_ascii_of_string "SETX".
+
+Definition sample_journal : tm :=
+  Bind (Perform OJournal [VBytes jmsg_bytes])
+  (Bind (Perform OJournal [VTag 5 (VPair (VBytes jtag_bytes) (VInt 3))])
+  (Bind (Perform OAsk [])
+        (Fold (VVar 0) (Ret VUnit)
+              (Bind (Perform OJournal [VVar 1]) (Ret (VVar 1)))))).
+
+(** JOURNAL error short-circuit (R9): a Repeat body increments key "0" and journals the
+    freshly-read counter (DSome 1 then DSome 2 — Repeat entry ORDER is genuinely
+    observable, not two equal entries), then the program THROWS; the post-throw append
+    never runs, so exactly the k = 2 pre-throw entries survive (OErr commits prior
+    state, adr-0013 §implementers). *)
+Definition jboom_bytes : list ascii := list_ascii_of_string "j-boom".
+
+Definition sample_journal_throw : tm :=
+  Bind (Repeat 2 (Bind (incr_at key0)
+                       (Bind (Perform OGet [VBytes key0])
+                             (Perform OJournal [VVar 0]))))
+       (Bind (Perform OThrow [VBytes jboom_bytes])
+             (Perform OJournal [VInt 99])).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -457,4 +495,6 @@ Definition all_programs : list (string * tm) :=
     ("sample_fold_guard"%string, sample_fold_guard);
     ("sample_throw_bytes"%string, sample_throw_bytes);
     ("sample_throw_tagged"%string, sample_throw_tagged);
+    ("sample_journal"%string, sample_journal);
+    ("sample_journal_throw"%string, sample_journal_throw);
     ("demo_prog"%string, demo_prog) ].

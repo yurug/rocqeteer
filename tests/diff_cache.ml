@@ -35,7 +35,7 @@ let ref_kv (pairs : (Z.t * Z.t) list) : (bytes * (Rkv.Rval.t * Z.t option)) list
       E.M.empty pairs
   in
   match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 S.sample_cache with
-  | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> norm bs
+  | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, bs), _tr), _jr) -> norm bs
 
 (* [prefill] optionally seeds the cache with ("0" -> Rval.Int 1) to exercise the HIT path. *)
 let fast_kv (prefill : bool) (pairs : (Z.t * Z.t) list)

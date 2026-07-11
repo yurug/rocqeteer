@@ -17,3 +17,15 @@ let with_store_and_time ~(source : Time.source) (table : Kv.entry Kv.T.t)
 let with_store_and_time_checked ~(source : Time.source) (table : Kv.entry Kv.T.t)
     (f : unit -> 'a) : ('a, Kv.error) result =
   Time.run source (fun () -> Kv.run_checked ~now:source table f)
+
+(** R9 (adr-0013): Time(source) ∘ Journal(source, jbuf, ?sink) ∘ Store(table, source) —
+    the ONE source instance drives all three handlers (Journal is a state-carrying
+    handler anywhere inside Time's scope, adr-0013 §Decision 5; like the store it reads
+    the shared source directly). The journal-free entrypoints above stay as-is for the
+    existing callers. Everything sink-onward is consumer trust
+    (Runtime_Journal_refines). *)
+let with_store_time_and_journal ?sink ~(source : Time.source)
+    (table : Kv.entry Kv.T.t) (jbuf : Journal.entry list ref)
+    (f : unit -> 'a) : 'a =
+  Time.run source (fun () ->
+      Journal.run ?sink source jbuf (fun () -> Kv.run ~now:source table f))

@@ -50,7 +50,7 @@ let reference () : (int * int) list * int list =
   let z_of = Coqconv.z_of_coqz in
   match E.observe_full (E.DInt (Coqconv.coqz_of_z (Z.of_int tag)))
           (Coqconv.coqz_of_z now) E.M.empty S.demo_prog with
-  | D.Coq_pair (D.Coq_pair (_o, kvs), tr) ->
+  | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, kvs), tr), _jr) ->
       let kv =
         Coqconv.list_of_coq kvs
         |> List.map (function

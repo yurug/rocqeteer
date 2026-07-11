@@ -209,6 +209,23 @@ let prim_list_len (l : Rval.t) : Rval.t =
                                       must be rejected here, not raise Z.Overflow; the
                                       prim_bytes_sub DS3 lesson above)
       DN3: otherwise        -> Some v_i (i now provably fits in int: i < length) *)
+(** [prim_div_floor a b]: FLOOR division, option-encoded (R9 companion prim,
+    adr-0009 discipline). Mirrors [EffIR.apply_div_floor]: Rocq's [Z.div] IS floor
+    division (rounds toward -infinity: (-7)/2 = -4), so this realizer uses zarith's
+    [Z.fdiv] — zarith's [Z.div] TRUNCATES toward zero and differs on negative
+    dividends ((-7)/2 would be -3). Division by zero returns [Rval.None] — total, no
+    exception (the b = 0 guard runs before any division). Consumer driver: TTL-style
+    rounding, e.g. (pttl + 500) / 1000. Range-checked like the Checked family: the one
+    int64-range escape, int64_min / -1 = 2^63, returns [Rval.None]. *)
+let prim_div_floor (a : Rval.t) (b : Rval.t) : Rval.t =
+  match a, b with
+  | Rval.Int za, Rval.Int zb ->
+      if Z.equal zb Z.zero then Rval.None
+      else
+        let r = Z.fdiv za zb in
+        if in_range r then Rval.Some (Rval.Int r) else Rval.None
+  | _ -> Rval.None  (* shape mismatch *)
+
 let prim_list_nth (l : Rval.t) (i : Rval.t) : Rval.t =
   match l, i with
   | Rval.List vs, Rval.Int zi ->

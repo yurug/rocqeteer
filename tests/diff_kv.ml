@@ -36,7 +36,7 @@ let ref_observe (term : E.tm) (pairs : (Z.t * Z.t) list)
   in
   let bindings =
     match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 term with
-    | D.Coq_pair (D.Coq_pair (_o, bs), _tr) -> bs
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (_o, bs), _tr), _jr) -> bs
   in
   Coqconv.list_of_coq bindings
   |> List.map (fun p ->

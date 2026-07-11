@@ -270,11 +270,36 @@ post         = "= rval_of_dval (apply_prim PListNth args); Rval.Some v_i for 0 <
 tests        = ["diff_prims"]
 owner        = "yann"
 
+[primitive."prim_div_floor"]
+ocaml_symbol = "Prims.prim_div_floor"
+purity       = "pure"
+raises       = []
+pre          = "args are Rval.Int values or shape mismatch"
+post         = "= rval_of_dval (apply_prim PDivFloor args); Rval.None if divisor = 0 (no exception) or mismatch, else Rval.Some (Rval.Int (Z.fdiv a b)) — FLOOR division (the Rocq reference Z.div IS floor; zarith's Z.div truncates, so the realizer uses Z.fdiv — (-7)/2 = -4 on both sides). Range-checked like the Checked family: int64_min / -1 -> Rval.None"
+tests        = ["diff_prims"]
+owner        = "yann"
+
 [assumption."Runtime_Prims_refines"]
 statement    = "for all prim p and args, rval_of_dval (apply_prim p (map dval_of_rval args)) = Prims.prim_<name> args"
 reference    = "EffIR.apply_prim (the TOTAL reference definition; DNone/DSome option-encoded)"
 fast         = "Prims.prim_* realizers in runtime/prims.ml; written from Rocq definitions, same DP order"
-validated_by = ["diff_prims (3000 pipeline states, G1-G16 grammar-violation classes, coverage asserted; plus 2000-round direct apply_prim-vs-realizer pass over ALL 12 prims: boundaries incl. -1 * int64_min, shape mismatches, beyond-native-int offsets/indices)"]
+validated_by = ["diff_prims (3000 pipeline states, G1-G16 grammar-violation classes, coverage asserted; plus 2000-round direct apply_prim-vs-realizer pass over ALL 13 prims: boundaries incl. -1 * int64_min, negative-dividend floor division and divisor 0, shape mismatches, beyond-native-int offsets/indices)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[effect."Journal"]
+ocaml_module = "Rkv.Journal"
+ops          = ["Append"]
+backend      = "Effect.Deep handler appending (now_ms, Rval.t) to a per-run buffer (newest-first; contents reverses to chronological) + optional per-entry sink callback (unit if absent); the timestamp is read from the SAME injectable source instance as the Time and Store handlers (Runtime.with_store_time_and_journal, one source — R9, adr-0013)"
+entry_type   = "(Z ms, Rval.t) — entries within one run share the run's single instant (adr-0011)"
+tests        = ["diff_journal"]
+owner        = "yann"
+
+[assumption."Runtime_Journal_refines"]
+statement    = "Journal.contents (buffer) = the chronological reference journal (timestamps = the run's instant, entries in program order), and the sink saw exactly the buffer's entries in order. PROVEN claims stop at \"the buffer equals the reference journal\" (differentially tested); everything sink-onward (disk bytes, crash atomicity, fsync) is named consumer trust — the manifest entry says so explicitly, and no rocqeteer text may claim journal durability (adr-0013 §Decision 4)"
+reference    = "EffIR.world.journal (newest-first; OJournal appends (now_ms, eval v); observe_full reverses). Write-only by construction: the GENERAL frame law run_journal_frame (theories/Journal.v) proves outcome and non-journal observables independent of the prior journal; the read-back mutant is rejected there"
+fast         = "Rkv.Journal (Effect.Deep, buffer + ?sink, source-shared timestamps); codegen lowers OJournal -> Journal.append"
+validated_by = ["diff_journal (300 rounds x 3 programs x 2 instants; J1-J9: empty/mixed/nested/large contexts, order under Repeat AND Fold bodies, error short-circuit keeps exactly the pre-throw entries, empty runs, sink==buffer, timestamps = run instant at two instants; coverage asserted)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 

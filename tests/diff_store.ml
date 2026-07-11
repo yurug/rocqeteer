@@ -68,7 +68,7 @@ let ref_obs (term : E.tm) (now : Z.t) (pairs : (bytes * entry) list) : obs =
   in
   let oc, bindings =
     match E.observe_full E.DUnit (Coqconv.coqz_of_z now) m0 term with
-    | D.Coq_pair (D.Coq_pair (o, bs), _tr) -> (o, bs)
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (o, bs), _tr), _jr) -> (o, bs)
   in
   let out =
     match oc with E.ORet v -> Some (Coqconv.rval_of_dval v) | E.OErr _ -> None
