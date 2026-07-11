@@ -77,6 +77,20 @@ Deferred design items: `kb/spec/slice1-status.md` ("Deferred to breadth").
 - Mode B (monadic Gallina via MetaRocq), ITree bridge, GADT witnesses, Error/Env/Trace/Cache effects, codec
   pilot: all post-slice-1.
 
+## IR v2 CONTRACT COMPLETE (2026-07-12): R0-R10 all landed
+Night run 2026-07-11/12 (user authorized autonomous overnight work): R4+R5 (5593f78, ADR-0011 — Time +
+expiring store, boundary now<=d validated by verdis's 12,500-case oracle run), R6 (6880e61, ADR-0012 —
+Fold + PListLen/PListNth/PMulChecked; R8 confirmed closed with payload-pinning theorems), R9 (093a39a,
+ADR-0013 — Journal with the frame law and run-sequence composition lemma PROVEN GENERAL; + PDivFloor
+range-checked), R10 v1 (9dec025, ADR-0014 — wf checker with GENERAL soundness: run_checked = Some . run
+for wf programs, scope-Dstuck class dead; codegen wf-gates every program; emission core exposed as
+public library rocqeteer.codegen + rocqeteer.{extracted,coqconv,runtime} for consumers). R11 remains
+NOT NEEDED (spike V). Every verdis requirement row R0-R10 is green. Pattern held: ADR first, sonnet
+execution agents, from-clean verification + trust-diff review before every commit; two spec bugs caught
+in review (PDivFloor range check, base-unix invariant-2 declaration). Deferred: R10 phase 2 (value-shape
+typing — open design question: how consumer tag->payload shapes are declared), demo does not yet show
+Fold/Journal/Time (demo refresh when next presenting).
+
 ## Interleaved consumer: verdis (R0 done 2026-07-10)
 verdis (~/work/dev/verdis) drives IR v2 (its kb/external/rocqeteer.md holds requirements R0-R10 per its
 ADR-0002 — no timebox, user decision). R0 = this packaging commit: `rocqeteer.opam` (generate_opam_files),
