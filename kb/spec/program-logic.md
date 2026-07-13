@@ -81,6 +81,14 @@ The vm_compute instance corpus stays authoritative and untouched (adr-0015 §Dec
 theorems are additive. Downstream: the consumer's ∀-quantified per-command campaign (adr-0015
 §Decision 6).
 
+## Known issues (R14 phase B field report, 2026-07-13)
+- `wp_step`'s Match arm DIVERGES (spins, not fails) when the scrutinee's `match_pat` is undecided
+  on an open term (e.g. a checked-prim result over abstract Z): `reflexivity` on
+  `match_pat PSome (apply_prim ...) = Some ?p` ran >7 min. Workaround (consumer CmdSpecs.v
+  pttl_spec_wp): counted `do N wp_step` + whitelisted `cbn [map eval_val nth apply_prim]` +
+  the prim's in-range rewrite. FIX WANTED next Logic round: guard the Match arm with a
+  head-constructor check (fail fast when the scrutinee is not a constructor application).
+
 ## Agent notes
 > State rules conclusion-first with side conditions as separate premises — `wp_step` depends on
 > it. New store ops must add: the base rule (exact `handle_store` branch), live/gone splits, and
