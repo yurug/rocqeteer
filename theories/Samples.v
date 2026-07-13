@@ -18,7 +18,13 @@
 
     R9 (adr-0013-journal-effect) adds [sample_journal] (mixed-shape journal entries,
     one appended inside a Fold body) and [sample_journal_throw] (Repeat-driven appends,
-    then a throw — pre-throw entries survive). Proven in theories/Journal.v. *)
+    then a throw — pre-throw entries survive). Proven in theories/Journal.v.
+
+    R12 (adr-0009 discipline, ADR-free prim addition) adds [sample_ci_dispatch]
+    (case-INSENSITIVE token dispatch: Env token -> PLowerBytes -> Match on lowercase
+    literals + default — the consumer driver: SET-style option tokens are
+    case-insensitive on the oracle, inexpressible with the exact PEqBytes).
+    Proven in theories/Prims.v §6. *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
@@ -460,6 +466,27 @@ Definition sample_journal_throw : tm :=
        (Bind (Perform OThrow [VBytes jboom_bytes])
              (Perform OJournal [VInt 99])).
 
+(* ===== R12 sample (adr-0009 discipline — PLowerBytes/PUpperBytes) =========== *)
+
+(** CASE-INSENSITIVE DISPATCH (R12): read an option token from the context (Env),
+    case-fold it via PLowerBytes, then dispatch on the LOWERCASE byte literals —
+    "nx" -> DInt 1, "xx" -> DInt 2, anything else -> DInt 0 (the mandatory default).
+    So "NX"/"nX"/"Nx"/"nx" all take the first branch: one branch per token instead of
+    one per capitalization (the 2^n blowup exact PEqBytes/PBytes would force).
+    de Bruijn: db0 = folded token in the Match; db1 = the raw token.
+    A non-DBytes context makes PLowerBytes yield DNone -> default -> DInt 0.
+    Each branch is proven in theories/Prims.v §6. *)
+Definition nx_bytes : list ascii := list_ascii_of_string "nx".
+Definition xx_bytes : list ascii := list_ascii_of_string "xx".
+
+Definition sample_ci_dispatch : tm :=
+  Bind (Perform OAsk [])
+  (Bind (Prim PLowerBytes [VVar 0])
+        (Match (VVar 0)
+           [(PBytes nx_bytes, Ret (VInt 1));
+            (PBytes xx_bytes, Ret (VInt 2))]
+           (Ret (VInt 0)))).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -497,4 +524,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_throw_tagged"%string, sample_throw_tagged);
     ("sample_journal"%string, sample_journal);
     ("sample_journal_throw"%string, sample_journal_throw);
+    ("sample_ci_dispatch"%string, sample_ci_dispatch);
     ("demo_prog"%string, demo_prog) ].

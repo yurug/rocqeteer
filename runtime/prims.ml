@@ -236,3 +236,34 @@ let prim_list_nth (l : Rval.t) (i : Rval.t) : Rval.t =
       (* DN3: in bounds *)
       else Rval.Some (List.nth vs (Z.to_int zi))
   | _ -> Rval.None
+
+(** [prim_lower_bytes bs] / [prim_upper_bytes bs]: ASCII case folding (R12,
+    adr-0009 discipline). Written FROM [EffIR.to_lower_ascii]/[to_upper_ascii] /
+    [apply_lower_bytes]/[apply_upper_bytes]: bytes 65-90 ('A'-'Z') shift +32 (lower),
+    bytes 97-122 ('a'-'z') shift -32 (upper); EVERY other byte is unchanged —
+    digits, punctuation, NUL, and bytes > 127 included (pure ASCII fold: no locale,
+    no UTF-8). Total; shape mismatch -> [Rval.None].
+
+    [Bytes.map] allocates a FRESH buffer — the input bytes are NEVER mutated (an
+    in-place fold would corrupt the caller's value: Rval bytes are shared). *)
+let prim_lower_bytes (bs : Rval.t) : Rval.t =
+  match bs with
+  | Rval.Bytes b ->
+      Rval.Bytes
+        (Bytes.map
+           (fun c ->
+             let n = Char.code c in
+             if n >= 65 && n <= 90 then Char.chr (n + 32) else c)
+           b)
+  | _ -> Rval.None  (* shape mismatch *)
+
+let prim_upper_bytes (bs : Rval.t) : Rval.t =
+  match bs with
+  | Rval.Bytes b ->
+      Rval.Bytes
+        (Bytes.map
+           (fun c ->
+             let n = Char.code c in
+             if n >= 97 && n <= 122 then Char.chr (n - 32) else c)
+           b)
+  | _ -> Rval.None  (* shape mismatch *)

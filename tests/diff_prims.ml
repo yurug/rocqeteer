@@ -34,7 +34,14 @@
     boundary bias: NEGATIVE dividends — floor and truncation DIFFER there, and both
     sides must say (-7)/2 = -4 (the realizer uses Z.fdiv; zarith's Z.div truncates);
     divisor 0 -> None with no exception; int64 boundaries incl. int64_min / -1 -> None (range);
-    shape mismatches. *)
+    shape mismatches.
+
+    R12 (adr-0009 discipline) adds PLowerBytes/PUpperBytes: ALL 256 single bytes are
+    asserted EXHAUSTIVELY (ref == fast == the spec value: 65-90 +32 for lower, 97-122
+    -32 for upper, every other byte fixed — incl. > 127); random mixed strings; empty;
+    NUL-embedded; shape mismatches; plus [sample_ci_dispatch] (Env token ->
+    PLowerBytes -> Match "nx"/"xx"/default) through the reference-vs-generated
+    pipeline with per-branch coverage (C1-C5) asserted. *)
 
 module E   = Ref_extracted.EffIR
 module D   = Ref_extracted.Datatypes
@@ -58,6 +65,23 @@ let fast_outcome (ctx_bytes : bytes) : Rkv.Rval.t =
   let result = ref Rkv.Rval.None in
   Rkv.Env.run (Rkv.Rval.Bytes ctx_bytes) (fun () ->
     result := Gen.sample_parse ());
+  !result
+
+(* --- R12 pipeline: sample_ci_dispatch reference vs generated ---------------- *)
+
+(** Run [sample_ci_dispatch] with a Bytes context on the reference interpreter. *)
+let ref_ci_outcome (ctx_bytes : bytes) : Rkv.Rval.t =
+  let coq_ctx = E.DBytes (Coqconv.bytes_to_ascii_list ctx_bytes) in
+  match E.run_top coq_ctx (Coqconv.coqz_of_z Z.zero) S.sample_ci_dispatch with
+  | D.Coq_pair (E.ORet v, _) -> Coqconv.rval_of_dval v
+  | D.Coq_pair (E.OErr e, _) ->
+      failwith ("diff_prims ci ref error: " ^ Rkv.Rval.to_string (Coqconv.rval_of_dval e))
+
+(** Run the generated [sample_ci_dispatch] under the Env handler (no KV needed). *)
+let fast_ci_outcome (ctx_bytes : bytes) : Rkv.Rval.t =
+  let result = ref Rkv.Rval.None in
+  Rkv.Env.run (Rkv.Rval.Bytes ctx_bytes) (fun () ->
+    result := Gen.sample_ci_dispatch ());
   !result
 
 (* --- expected outcomes for specific inputs --------------------------------- *)
@@ -292,7 +316,11 @@ let direct_prim_pass () =
       | _ -> zb
     in
     check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
-      [ia; Rkv.Rval.Int db]
+      [ia; Rkv.Rval.Int db];
+    (* R12 prims: random mixed strings (gen_bytes is full-range 0-255, incl. empty and
+       NUL-carrying) through both case folds *)
+    check_prim "lower_bytes" E.PLowerBytes (app1 Rkv.Prims.prim_lower_bytes) [ba];
+    check_prim "upper_bytes" E.PUpperBytes (app1 Rkv.Prims.prim_upper_bytes) [bb]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -375,7 +403,141 @@ let direct_prim_pass () =
   check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
     [Rkv.Rval.Bytes (Bytes.of_string "7"); zi 2];
   check_prim "div_floor" E.PDivFloor (app2 Rkv.Prims.prim_div_floor)
-    [zi 7; Rkv.Rval.Unit]
+    [zi 7; Rkv.Rval.Unit];
+  (* R12 fixed adversarial cases: PLowerBytes/PUpperBytes.
+     EXHAUSTIVE single-byte pass: for EVERY byte 0-255, the VALUE is asserted (not just
+     ref==fast) against the spec — 65-90 shifted +32 for lower, 97-122 shifted -32 for
+     upper, EVERY other byte fixed (digits, punctuation, NUL, and >127: pure ASCII fold,
+     no latin-1/UTF-8 folding). *)
+  let assert_fold name p impl expected_map what b =
+    let arg = Rkv.Rval.Bytes b in
+    let expect = Rkv.Rval.Bytes (Bytes.map expected_map b) in
+    let r = ref_prim p [arg] and f = impl arg in
+    if not (Rkv.Rval.equal r expect && Rkv.Rval.equal f expect) then begin
+      incr prim_fails;
+      Printf.printf
+        "CASE_FOLD VALUE FAIL (RSEED=%d) %s %s: input=%s expected %s, ref=%s fast=%s\n"
+        seed name what (Rkv.Rval.to_string arg) (Rkv.Rval.to_string expect)
+        (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+    end
+  in
+  let spec_lower c =
+    let n = Char.code c in if n >= 65 && n <= 90 then Char.chr (n + 32) else c in
+  let spec_upper c =
+    let n = Char.code c in if n >= 97 && n <= 122 then Char.chr (n - 32) else c in
+  let assert_lower = assert_fold "lower_bytes" E.PLowerBytes
+      Rkv.Prims.prim_lower_bytes spec_lower in
+  let assert_upper = assert_fold "upper_bytes" E.PUpperBytes
+      Rkv.Prims.prim_upper_bytes spec_upper in
+  for i = 0 to 255 do
+    let b = Bytes.make 1 (Char.chr i) in
+    assert_lower (Printf.sprintf "byte 0x%02x" i) b;
+    assert_upper (Printf.sprintf "byte 0x%02x" i) b
+  done;
+  (* empty; NUL-embedded (letters AROUND the NUL must still fold); driver tokens *)
+  assert_lower "empty" Bytes.empty;
+  assert_upper "empty" Bytes.empty;
+  assert_lower "NUL-embedded" (Bytes.of_string "Ab\x00Cd\xff-9Z");
+  assert_upper "NUL-embedded" (Bytes.of_string "Ab\x00Cd\xff-9z");
+  assert_lower "driver token" (Bytes.of_string "KeepTtl");
+  assert_upper "driver token" (Bytes.of_string "KeepTtl");
+  (* the realizer must NOT mutate its input (fresh Bytes.map buffer) *)
+  let original = Bytes.of_string "MiXeD" in
+  let copy = Bytes.copy original in
+  ignore (Rkv.Prims.prim_lower_bytes (Rkv.Rval.Bytes original));
+  ignore (Rkv.Prims.prim_upper_bytes (Rkv.Rval.Bytes original));
+  if not (Bytes.equal original copy) then begin
+    incr prim_fails;
+    Printf.printf "CASE_FOLD MUTATION FAIL (RSEED=%d): realizer mutated its input\n" seed
+  end;
+  (* shape mismatches: both sides must agree on None *)
+  check_prim "lower_bytes" E.PLowerBytes (app1 Rkv.Prims.prim_lower_bytes)
+    [Rkv.Rval.Int (Z.of_int 65)];
+  check_prim "upper_bytes" E.PUpperBytes (app1 Rkv.Prims.prim_upper_bytes)
+    [Rkv.Rval.Unit];
+  check_prim "lower_bytes" E.PLowerBytes (app1 Rkv.Prims.prim_lower_bytes)
+    [Rkv.Rval.List [Rkv.Rval.Bytes (Bytes.of_string "NX")]]
+
+(* --- R12 pipeline pass: sample_ci_dispatch ---------------------------------- *)
+(* Case-insensitive dispatch through the FULL reference-vs-generated pipeline: the
+   token case-folds via PLowerBytes, then matches lowercase literals — so every
+   capitalization of "nx"/"xx" must take its branch, and everything else (incl. empty,
+   NUL, high bytes) the default. Coverage classes (asserted):
+     C1  "nx" in some NON-lowercase capitalization -> 1 (the prim is load-bearing)
+     C2  "xx" in some NON-lowercase capitalization -> 2
+     C3  other token -> default 0
+     C4  empty bytes -> default 0
+     C5  bytes > 127 -> default 0 (pure ASCII fold posture crosses the pipeline) *)
+
+let ci_fails = ref 0
+let cover_c1 = ref false
+let cover_c2 = ref false
+let cover_c3 = ref false
+let cover_c4 = ref false
+let cover_c5 = ref false
+
+let gen_ci_token () : bytes =
+  let mix_case s =
+    Bytes.of_string
+      (String.map (fun c -> if Random.State.bool rng then Char.uppercase_ascii c else c) s)
+  in
+  match Random.State.int rng 12 with
+  | 0 | 1 -> mix_case "nx"
+  | 2 | 3 -> mix_case "xx"
+  | 4     -> mix_case "keepttl"
+  | 5     -> Bytes.empty
+  | 6     -> Bytes.of_string "\x00nx"                       (* NUL prefix: default *)
+  | 7     -> Bytes.init (1 + Random.State.int rng 6)
+               (fun _ -> Char.chr (0x80 + Random.State.int rng 0x80))  (* high bytes *)
+  | _     -> Bytes.init (Random.State.int rng 6)
+               (fun _ -> Char.chr (Random.State.int rng 256))
+
+let ci_dispatch_pass () =
+  let lower_of b =
+    Bytes.map (fun c ->
+        let n = Char.code c in
+        if n >= 65 && n <= 90 then Char.chr (n + 32) else c) b
+  in
+  for _ = 1 to 3000 do
+    let tok = gen_ci_token () in
+    let r = ref_ci_outcome tok and f = fast_ci_outcome tok in
+    if not (Rkv.Rval.equal r f) then begin
+      incr ci_fails;
+      Printf.printf "CI-DISPATCH MISMATCH (RSEED=%d) token=%s\n  ref=%s\n  fast=%s\n"
+        seed (Rkv.Rval.to_string (Rkv.Rval.Bytes tok))
+        (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+    end else begin
+      (* validate the expected branch AND record coverage *)
+      let folded = Bytes.to_string (lower_of tok) in
+      let expect =
+        if folded = "nx" then 1 else if folded = "xx" then 2 else 0 in
+      if not (Rkv.Rval.equal r (Rkv.Rval.Int (Z.of_int expect))) then begin
+        incr ci_fails;
+        Printf.printf "CI-DISPATCH BRANCH FAIL (RSEED=%d) token=%s expected %d got %s\n"
+          seed (Rkv.Rval.to_string (Rkv.Rval.Bytes tok)) expect (Rkv.Rval.to_string r)
+      end;
+      let raw = Bytes.to_string tok in
+      if folded = "nx" && raw <> "nx" then cover_c1 := true;
+      if folded = "xx" && raw <> "xx" then cover_c2 := true;
+      if expect = 0 && Bytes.length tok > 0 then cover_c3 := true;
+      if Bytes.length tok = 0 then cover_c4 := true;
+      if Bytes.exists (fun c -> Char.code c >= 0x80) tok then cover_c5 := true
+    end
+  done;
+  (* fixed spot-checks: one per branch, mixed case (the prim is what makes them pass) *)
+  List.iter
+    (fun (tok, expect) ->
+       let r = ref_ci_outcome (Bytes.of_string tok)
+       and f = fast_ci_outcome (Bytes.of_string tok) in
+       let e = Rkv.Rval.Int (Z.of_int expect) in
+       if not (Rkv.Rval.equal r e && Rkv.Rval.equal f e) then begin
+         incr ci_fails;
+         Printf.printf "CI-DISPATCH SPOT FAIL (RSEED=%d) %S expected %d ref=%s fast=%s\n"
+           seed tok expect (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+       end)
+    [ ("NX", 1); ("nX", 1); ("Nx", 1); ("nx", 1);
+      ("XX", 2); ("xX", 2); ("xx", 2);
+      ("KEEPTTL", 0); ("KeepTtl", 0); ("", 0); ("n", 0); ("nxx", 0) ]
 
 (* --- main ------------------------------------------------------------------ *)
 
@@ -435,6 +597,7 @@ let () =
           incr fails);
 
   direct_prim_pass ();
+  ci_dispatch_pass ();
 
   let cov_ok =
     !cover_g1 && !cover_g2 && !cover_g3 && !cover_g4 && !cover_g5 &&
@@ -442,19 +605,24 @@ let () =
     !cover_g11 && !cover_g12 && !cover_g13 && !cover_g14 && !cover_g15 &&
     !cover_g16
   in
+  let ci_cov_ok = !cover_c1 && !cover_c2 && !cover_c3 && !cover_c4 && !cover_c5 in
   Printf.printf
-    "states=%d fails=%d prim_fails=%d | outcomes: success=%d ERR=%d OVF=%d\n\
+    "states=%d fails=%d prim_fails=%d ci_fails=%d | outcomes: success=%d ERR=%d OVF=%d\n\
      coverage: G1(zero)=%b G2(max->OVF)=%b G3(parse-OOB-hi)=%b G4(min)=%b G5(parse-OOB-lo)=%b\n\
      G6(lead0)=%b G7(space)=%b G8(plus)=%b G9(empty)=%b G10(-0)=%b\n\
-     G11(sci)=%b G12(20dig)=%b G13(junk)=%b G14(valid+)=%b G15(valid-)=%b G16(bare-)=%b\n"
-    n !fails !prim_fails !successes !errs !ovfs
+     G11(sci)=%b G12(20dig)=%b G13(junk)=%b G14(valid+)=%b G15(valid-)=%b G16(bare-)=%b\n\
+     ci-dispatch: C1(nx-mixed)=%b C2(xx-mixed)=%b C3(default)=%b C4(empty)=%b C5(high)=%b\n"
+    n !fails !prim_fails !ci_fails !successes !errs !ovfs
     !cover_g1 !cover_g2 !cover_g3 !cover_g4 !cover_g5
     !cover_g6 !cover_g7 !cover_g8 !cover_g9 !cover_g10
-    !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16;
-  if !fails = 0 && !prim_fails = 0 && cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 13 realizers direct); coverage asserted"
+    !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16
+    !cover_c1 !cover_c2 !cover_c3 !cover_c4 !cover_c5;
+  if !fails = 0 && !prim_fails = 0 && !ci_fails = 0 && cov_ok && ci_cov_ok then
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 15 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";
+    if not ci_cov_ok then
+      print_endline "PRIMS COVERAGE GAP: a required ci-dispatch class (C1-C5) was never exercised";
     exit 1
   end

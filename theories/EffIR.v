@@ -57,7 +57,15 @@
     theories/Journal.v ([run_journal_frame]), alongside the run-sequence-is-a-fold
     composition lemma. [observe_full] exposes the journal reversed (chronological),
     alongside the trace. Also adds the prim [PDivFloor] (adr-0009 discipline: ADR-free,
-    manifest + diff-test mandatory) — FLOOR division, option-encoded division by zero. *)
+    manifest + diff-test mandatory) — FLOOR division, option-encoded division by zero.
+
+    IR v2 R12 (2026-07-13, adr-0009 discipline — ADR-free prim addition, manifest +
+    diff-test mandatory): [PLowerBytes]/[PUpperBytes] — ASCII case folding, arity 1,
+    [DBytes bs] -> [DBytes] with bytes 65-90 ('A'-'Z') shifted +32 (lower) resp. bytes
+    97-122 ('a'-'z') shifted -32 (upper); EVERY other byte unchanged, including bytes
+    > 127 (a pure ASCII fold: no locale, no UTF-8). Total; shape mismatch -> DNone.
+    Consumer driver: case-insensitive command option tokens (inexpressible with the
+    exact [PEqBytes]). *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -148,7 +156,9 @@ Inductive prim : Type :=
 | PMulChecked   (** DInt a, DInt b -> DSome (DInt (a*b)) if in-range, DNone otherwise (R6) *)
 | PListLen      (** DList vs -> DInt (length vs); shape mismatch -> DNone (R6) *)
 | PListNth      (** DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6) *)
-| PDivFloor.    (** DInt a, DInt b -> DNone if b = 0, else DSome (DInt (a / b)) — FLOOR (R9) *)
+| PDivFloor     (** DInt a, DInt b -> DNone if b = 0, else DSome (DInt (a / b)) — FLOOR (R9) *)
+| PLowerBytes   (** DBytes bs -> DBytes (ASCII fold: 65-90 shifted +32; every other byte unchanged) (R12) *)
+| PUpperBytes.  (** DBytes bs -> DBytes (ASCII fold: 97-122 shifted -32; every other byte unchanged) (R12) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -327,6 +337,29 @@ Definition apply_bytes_sub (bs : list ascii) (offset len : Z) : dval :=
     let dropped := List.skipn drop_n bs in
     DSome (DBytes (List.firstn take_n dropped)).
 
+(** [to_lower_ascii c]: ASCII case fold, one byte (R12). Bytes 65-90 ('A'-'Z') shift
+    +32 to 97-122 ('a'-'z'); EVERY other byte is unchanged — digits, punctuation, NUL,
+    and bytes > 127 included (a pure ASCII fold: no locale, no UTF-8). *)
+Definition to_lower_ascii (c : ascii) : ascii :=
+  let n := N_of_ascii c in
+  if (65 <=? n)%N && (n <=? 90)%N then ascii_of_N (n + 32) else c.
+
+(** [to_upper_ascii c]: the inverse direction (R12). Bytes 97-122 ('a'-'z') shift -32
+    to 65-90 ('A'-'Z'); every other byte unchanged (same non-letter posture). *)
+Definition to_upper_ascii (c : ascii) : ascii :=
+  let n := N_of_ascii c in
+  if (97 <=? n)%N && (n <=? 122)%N then ascii_of_N (n - 32) else c.
+
+(** [apply_lower_bytes bs] / [apply_upper_bytes bs]: byte-wise map of the fold above
+    over the whole byte string (R12, adr-0009 discipline). Total — always a DBytes of
+    the SAME length; the option encoding is only used by [apply_prim] for the shape
+    mismatch case. *)
+Definition apply_lower_bytes (bs : list ascii) : dval :=
+  DBytes (List.map to_lower_ascii bs).
+
+Definition apply_upper_bytes (bs : list ascii) : dval :=
+  DBytes (List.map to_upper_ascii bs).
+
 (** ** [apply_prim p args]: the TOTAL reference definition of each primitive.
     Arity or shape mismatch → DNone (adr-0009 §Decision 2). *)
 Definition apply_prim (p : prim) (args : list dval) : dval :=
@@ -344,6 +377,8 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
   | PListLen,     [DList vs]           => DInt (Z.of_nat (List.length vs))
   | PListNth,     [DList vs; DInt i]   => apply_list_nth vs i
   | PDivFloor,    [DInt a; DInt b]     => apply_div_floor a b
+  | PLowerBytes,  [DBytes bs]          => apply_lower_bytes bs
+  | PUpperBytes,  [DBytes bs]          => apply_upper_bytes bs
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 

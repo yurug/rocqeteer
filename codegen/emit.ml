@@ -225,6 +225,10 @@ and emit_prim (env : string list) (p : prim) (args : coq_val list) : string =
                                   (emit_val env a) (emit_val env b)
   | PDivFloor,    [a; b]    -> Printf.sprintf "(Prims.prim_div_floor %s %s)"
                                   (emit_val env a) (emit_val env b)
+  | PLowerBytes,  [a]       -> Printf.sprintf "(Prims.prim_lower_bytes %s)"
+                                  (emit_val env a)
+  | PUpperBytes,  [a]       -> Printf.sprintf "(Prims.prim_upper_bytes %s)"
+                                  (emit_val env a)
   | _ -> raise (Codegen_error "Prim applied at wrong arity")
 
 and emit_tm (env : string list) (t : tm) : string =

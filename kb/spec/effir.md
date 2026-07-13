@@ -1,9 +1,9 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R9 grammar (append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R12 grammar (ASCII case-fold prims, append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
 domain: spec
-last-updated: 2026-07-12
+last-updated: 2026-07-13
 depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination, adr-0013-journal-effect, adr-0014-wf-checker]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
@@ -30,6 +30,8 @@ lint-max-lines: 210
 > Soundness GENERAL in `theories/Wf.v` (`wf_no_scope_stuck`: no out-of-scope `VVar` branch,
 > ever; shape errors stay dynamic). Codegen wf-gates every program pre-emission with the
 > EXTRACTED checker, no opt-out; emission core = `rocqeteer.codegen` ([[adr-0014-wf-checker]]).
+> R12 (2026-07-13): prims `PLowerBytes`/`PUpperBytes` — ASCII case folding (adr-0009 discipline:
+> ADR-free, manifest + diff-test; driver: case-insensitive option tokens; `theories/Prims.v` §6).
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -83,6 +85,8 @@ PListLen      DList vs        -> DInt (length vs); shape mismatch -> DNone  (R6)
 PListNth      DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6; bound checked in Z)
 PDivFloor     DInt a, DInt b  -> DNone if b = 0 or result exits int64 (only int64_min / -1), else DSome
               (DInt (a/b)) — FLOOR (Rocq Z.div; realizer Z.fdiv, zarith Z.div truncates; driver: TTL rounding)
+PLowerBytes   DBytes bs       -> DBytes: bytes 65-90 shifted +32; EVERY other byte unchanged incl. >127 (R12)
+PUpperBytes   DBytes bs       -> DBytes: bytes 97-122 shifted -32; same non-letter posture — pure ASCII fold (R12)
 ```
 **Strict parse grammar (DP1-DP8):**
 DP1 empty input → DNone · DP2 leading '-' → negative, advance · DP3 digits empty after

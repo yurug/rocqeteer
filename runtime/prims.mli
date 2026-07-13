@@ -21,3 +21,9 @@ val prim_list_nth     : Rval.t -> Rval.t -> Rval.t
 (** FLOOR division (Z.fdiv — the Rocq reference's Z.div is floor, zarith's Z.div is
     truncation); [Rval.None] on divisor 0 or shape mismatch — no exception (R9). *)
 val prim_div_floor    : Rval.t -> Rval.t -> Rval.t
+
+(** ASCII case folding (R12): 65-90 shifted +32 (lower) resp. 97-122 shifted -32
+    (upper); every other byte unchanged, incl. > 127 — no locale, no UTF-8. Fresh
+    output buffer (the input is never mutated); [Rval.None] on shape mismatch. *)
+val prim_lower_bytes  : Rval.t -> Rval.t
+val prim_upper_bytes  : Rval.t -> Rval.t

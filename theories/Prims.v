@@ -8,7 +8,11 @@
        then the general [parse_print_roundtrip] for ALL in-range z (§1b).
     2. Strict-grammar rejection lemmas (one per violation class), proved by vm_compute.
     3. Overflow rejection (PAddChecked at boundary).
-    4. [sample_parse] program proofs (success, ERR, OVF branches; inhabitance; mutant rejection). *)
+    4. [sample_parse] program proofs (success, ERR, OVF branches; inhabitance; mutant rejection).
+    6. R12 (PLowerBytes/PUpperBytes, adr-0009 discipline): closed vm_compute lemmas —
+       case folding, idempotence, non-letter/NUL/0xFF/'-' bytes fixed, empty, shape and
+       arity mismatches; [sample_ci_dispatch] branch proofs + inhabitance; a
+       digit-shifting fold mutant observably rejected. *)
 
 From Stdlib Require Import ZArith List Ascii String Bool Lia.
 From Rocqeteer Require Import EffIR Samples.
@@ -492,6 +496,168 @@ Theorem mutant_differs_from_strict :
   (let '(o, _) := run_top (DBytes (list_ascii_of_string "0123")) 0 sample_parse in o).
 Proof. vm_compute. intro H. discriminate H. Qed.
 
+(* ===== §6  R12: PLowerBytes / PUpperBytes (ASCII case folding) ============= *)
+(** adr-0009 §Consequences discipline: prim additions are ADR-free, but manifest +
+    differential tests are MANDATORY — and here, the anti-vacuity corpus: closed
+    vm_compute lemmas at the byte-class boundaries, a sample program with every branch
+    proven, an observably rejected mutant, and inhabitance. Witnesses stay EXPLICIT
+    (the header note: no vm_compute on open terms). *)
+
+(** Helpers: run the prims on a string literal. *)
+Definition lower_str (s : string) : dval :=
+  apply_prim PLowerBytes [DBytes (list_ascii_of_string s)].
+Definition upper_str (s : string) : dval :=
+  apply_prim PUpperBytes [DBytes (list_ascii_of_string s)].
+
+(** The consumer driver, verbatim: a mixed-case option token folds to its lowercase
+    (resp. uppercase) canonical form. *)
+Theorem lower_keepttl :
+  lower_str "KeepTtl" = DBytes (list_ascii_of_string "keepttl").
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_keepttl :
+  upper_str "KeepTtl" = DBytes (list_ascii_of_string "KEEPTTL").
+Proof. vm_compute. reflexivity. Qed.
+
+(** Idempotence on concrete values: folding an already-folded token is the identity
+    (lowercase bytes are outside 65-90; uppercase bytes are outside 97-122). *)
+Theorem lower_idempotent_keepttl :
+  lower_str "keepttl" = DBytes (list_ascii_of_string "keepttl").
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_idempotent_keepttl :
+  upper_str "KEEPTTL" = DBytes (list_ascii_of_string "KEEPTTL").
+Proof. vm_compute. reflexivity. Qed.
+
+(** Non-letter bytes are FIXED by both folds: digits, '-', and (below) NUL and 0xFF. *)
+Theorem lower_digits_minus_fixed :
+  lower_str "-0129" = DBytes (list_ascii_of_string "-0129").
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_digits_minus_fixed :
+  upper_str "-0129" = DBytes (list_ascii_of_string "-0129").
+Proof. vm_compute. reflexivity. Qed.
+
+(** NUL (0x00) and 0xFF (a byte > 127 — the fold is pure ASCII, no latin-1/UTF-8
+    folding) are unchanged, mixed with letters that DO fold. *)
+Definition nul_ff_probe : list ascii :=
+  [ascii_of_N 0; ascii_of_N 65; ascii_of_N 255; ascii_of_N 122].  (* NUL 'A' 0xFF 'z' *)
+
+Theorem lower_nul_ff_fixed :
+  apply_prim PLowerBytes [DBytes nul_ff_probe]
+  = DBytes [ascii_of_N 0; ascii_of_N 97; ascii_of_N 255; ascii_of_N 122].
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_nul_ff_fixed :
+  apply_prim PUpperBytes [DBytes nul_ff_probe]
+  = DBytes [ascii_of_N 0; ascii_of_N 65; ascii_of_N 255; ascii_of_N 90].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Empty input: the empty byte string maps to itself. *)
+Theorem lower_empty : lower_str "" = DBytes [].
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_empty : upper_str "" = DBytes [].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Shape mismatch -> DNone (adr-0009 §Decision 2); arity mismatch too. *)
+Theorem lower_shape_mismatch :
+  apply_prim PLowerBytes [DInt 65] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem upper_shape_mismatch :
+  apply_prim PUpperBytes [DUnit] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem lower_arity_mismatch :
+  apply_prim PLowerBytes [DBytes []; DBytes []] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+(* ---- §6b  sample_ci_dispatch: every branch proven ------------------------- *)
+(** [sample_ci_dispatch] (Samples.v): Env token -> PLowerBytes -> Match on the
+    lowercase literals "nx" -> 1 / "xx" -> 2 / default -> 0. The point of the prim:
+    ONE branch per token covers every capitalization. *)
+
+Theorem ci_dispatch_nx_upper :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "NX")) 0 sample_ci_dispatch in
+  o = ORet (DInt 1).
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem ci_dispatch_nx_mixed :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "nX")) 0 sample_ci_dispatch in
+  o = ORet (DInt 1).
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem ci_dispatch_nx_lower :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "nx")) 0 sample_ci_dispatch in
+  o = ORet (DInt 1).
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem ci_dispatch_xx_upper :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "XX")) 0 sample_ci_dispatch in
+  o = ORet (DInt 2).
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem ci_dispatch_xx_mixed :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "Xx")) 0 sample_ci_dispatch in
+  o = ORet (DInt 2).
+Proof. vm_compute. reflexivity. Qed.
+
+(** Default branch: an unknown token (any case) yields 0. *)
+Theorem ci_dispatch_default :
+  let '(o, _) := run_top (DBytes (list_ascii_of_string "KeepTtl")) 0 sample_ci_dispatch in
+  o = ORet (DInt 0).
+Proof. vm_compute. reflexivity. Qed.
+
+(** Default branch, shape-mismatch route: a non-DBytes context makes PLowerBytes
+    yield DNone, which matches neither PBytes literal -> default -> 0 (total without
+    a typechecker — the adr-0009 posture, observably exercised). *)
+Theorem ci_dispatch_non_bytes_ctx :
+  let '(o, _) := run_top (DInt 42) 0 sample_ci_dispatch in
+  o = ORet (DInt 0).
+Proof. vm_compute. reflexivity. Qed.
+
+(** Inhabitance (explicit witness — the header's OOM note): a world exists where the
+    "NX" run lands in the first branch. *)
+Lemma ci_dispatch_inhabited :
+  exists w, run_top (DBytes (list_ascii_of_string "NX")) 0 sample_ci_dispatch =
+            (ORet (DInt 1), w).
+Proof.
+  exists (snd (run_top (DBytes (list_ascii_of_string "NX")) 0 sample_ci_dispatch)).
+  vm_compute. reflexivity.
+Qed.
+
+(* ---- §6c  Mutant rejection: a fold that also shifts digits ----------------- *)
+(** MUTANT: a lower-fold whose window is 48-90 instead of 65-90 — it "case-folds"
+    digits too ('1' (49) -> 'Q' (81) is +32 inside its window). EffIR is untouched
+    (the local-mutant technique). If [apply_lower_bytes] had this bug, option tokens
+    carrying digits (e.g. "EX10") would corrupt — the statements below pin the
+    boundary observably. *)
+Definition to_lower_mutant (c : ascii) : ascii :=
+  let n := N_of_ascii c in
+  if (48 <=? n)%N && (n <=? 90)%N then ascii_of_N (n + 32) else c.
+
+Definition apply_lower_bytes_mutant (bs : list ascii) : dval :=
+  DBytes (List.map to_lower_mutant bs).
+
+(** The mutant CORRUPTS the digit-carrying token ("EX10" -> "exQP")... *)
+Theorem mutant_shifts_digits :
+  apply_lower_bytes_mutant (list_ascii_of_string "EX10")
+  = DBytes (list_ascii_of_string "exQP").
+Proof. vm_compute. reflexivity. Qed.
+
+(** ... the reference keeps the digits fixed ("EX10" -> "ex10")... *)
+Theorem lower_keeps_digits :
+  lower_str "EX10" = DBytes (list_ascii_of_string "ex10").
+Proof. vm_compute. reflexivity. Qed.
+
+(** ... so the mutant is observably different — a digit-shifting implementation
+    cannot satisfy the reference's statements. *)
+Theorem mutant_lower_differs :
+  apply_lower_bytes_mutant (list_ascii_of_string "EX10")
+  <> apply_lower_bytes (list_ascii_of_string "EX10").
+Proof. vm_compute. intro H. inversion H. Qed.
+
 (** Print Assumptions footprint — each must say "Closed under the global context". *)
 Print Assumptions parse_print_zero.
 Print Assumptions parse_print_roundtrip.
@@ -514,3 +680,27 @@ Print Assumptions sample_parse_success.
 Print Assumptions sample_parse_overflow.
 Print Assumptions sample_parse_inhabited.
 Print Assumptions mutant_differs_from_strict.
+Print Assumptions lower_keepttl.
+Print Assumptions upper_keepttl.
+Print Assumptions lower_idempotent_keepttl.
+Print Assumptions upper_idempotent_keepttl.
+Print Assumptions lower_digits_minus_fixed.
+Print Assumptions upper_digits_minus_fixed.
+Print Assumptions lower_nul_ff_fixed.
+Print Assumptions upper_nul_ff_fixed.
+Print Assumptions lower_empty.
+Print Assumptions upper_empty.
+Print Assumptions lower_shape_mismatch.
+Print Assumptions upper_shape_mismatch.
+Print Assumptions lower_arity_mismatch.
+Print Assumptions ci_dispatch_nx_upper.
+Print Assumptions ci_dispatch_nx_mixed.
+Print Assumptions ci_dispatch_nx_lower.
+Print Assumptions ci_dispatch_xx_upper.
+Print Assumptions ci_dispatch_xx_mixed.
+Print Assumptions ci_dispatch_default.
+Print Assumptions ci_dispatch_non_bytes_ctx.
+Print Assumptions ci_dispatch_inhabited.
+Print Assumptions mutant_shifts_digits.
+Print Assumptions lower_keeps_digits.
+Print Assumptions mutant_lower_differs.
