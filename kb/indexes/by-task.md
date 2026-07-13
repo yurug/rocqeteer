@@ -3,7 +3,7 @@ id: idx-by-task
 type: index
 summary: Task-oriented routing — given what you are about to do (implement / prove / build codegen / add a realizer / test / audit / debug), the ordered files to load and the key questions they answer.
 domain: meta
-last-updated: 2026-07-08
+last-updated: 2026-07-13
 depends-on: []
 refines: []
 related: [index, spec-index, prop-index]
@@ -20,9 +20,10 @@ Pick your task; load the files in order; the "answers" column says what you'll l
 
 ### Prove something (Hoare spec, law, refinement)
 1. `spec/reference-semantics.md` — interpreter, `verifies`, KV handler, laws.
-2. `properties/functional.md` — which P-entry am I establishing.
-3. `architecture/decisions/adr-0005-anti-vacuity.md` · `conventions/testing-strategy.md` — inhabitance + mutation companions.
-> Answers: What exactly must the theorem assert? What inhabitance lemma + mutant must accompany it?
+2. `spec/program-logic.md` — the shallow wp layer: rule inventory, store assertions, wp tactics (for ∀-quantified program theorems).
+3. `properties/functional.md` — which P-entry am I establishing.
+4. `architecture/decisions/adr-0005-anti-vacuity.md` · `conventions/testing-strategy.md` — inhabitance + mutation companions.
+> Answers: What exactly must the theorem assert? What inhabitance lemma + mutant must accompany it? Instance (vm_compute) or general (wp rules)?
 
 ### Build / debug the codegen
 1. `spec/codegen.md` — lowering table, emitted files, headers, fail-loud.

@@ -3,7 +3,7 @@ id: index
 type: index
 summary: Top-level routing for the Rocqeteer knowledge base — what the project is, how to read the KB, and quick-load bundles by goal.
 domain: meta
-last-updated: 2026-07-08
+last-updated: 2026-07-13
 depends-on: []
 refines: []
 related: [glossary, prd, arch-overview, idx-by-task]
@@ -41,7 +41,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
 - `architecture/overview.md` + `decisions/` (6 ADRs) — pipeline, TCB layers, and the decisions behind them.
-- `spec/` (7 + index) — EffIR, effect signatures, reference semantics, codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
+- `spec/` (8 + index) — EffIR, effect signatures, reference semantics, **program-logic** (the R14 shallow wp layer), codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
 - `properties/` (3 + index) — functional (proven, P1–P8), non-functional (measured, NF1–NF6), edge cases (T1–T10).
 - `external/` (`external/INDEX.md`) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
 - `conventions/` (`conventions/INDEX.md`) — code style, error handling, testing & proof hygiene.
