@@ -267,3 +267,20 @@ let prim_upper_bytes (bs : Rval.t) : Rval.t =
              if n >= 97 && n <= 122 then Char.chr (n - 32) else c)
            b)
   | _ -> Rval.None  (* shape mismatch *)
+
+(** [prim_list_snoc l v]: append [v] at the END of the list value [l] (R13,
+    adr-0009 discipline). Written FROM [EffIR.apply_prim PListSnoc]:
+    [DList vs; v] -> DList (vs ++ [v]) — the appended element is ANY value
+    (incl. another List/Tag: replies nest, the element is never concatenated);
+    a first argument that is not a List -> [Rval.None]. Total.
+
+    O(n) append per snoc ([vs @ [v]] rebuilds the spine) — DELIBERATE: it mirrors
+    the reference definition exactly, and the consumer pattern (a collecting Fold
+    building a reply) is O(n^2) worst-case only on huge argv, which is bounded in
+    practice by the consumer's multibulk cap; a deque/tail-pointer realizer would
+    be premature optimization with a wider audit surface. The fresh spine also
+    means the INPUT list is never mutated (Rval lists are shared). *)
+let prim_list_snoc (l : Rval.t) (v : Rval.t) : Rval.t =
+  match l with
+  | Rval.List vs -> Rval.List (vs @ [ v ])
+  | _ -> Rval.None  (* shape mismatch *)

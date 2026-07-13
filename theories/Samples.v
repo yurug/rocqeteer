@@ -24,7 +24,12 @@
     (case-INSENSITIVE token dispatch: Env token -> PLowerBytes -> Match on lowercase
     literals + default — the consumer driver: SET-style option tokens are
     case-insensitive on the oracle, inexpressible with the exact PEqBytes).
-    Proven in theories/Prims.v §6. *)
+    Proven in theories/Prims.v §6.
+
+    R13 (adr-0009 discipline, ADR-free prim addition) adds [sample_fold_collect]
+    (the COLLECTING FOLD: an argv-style DList of byte keys folded with acc = the reply
+    DList under construction, body = OGet + PListSnoc a tagged slot — replies of
+    DATA-DEPENDENT length with zero new term forms). Proven in theories/Fold.v §9. *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR.
@@ -487,6 +492,35 @@ Definition sample_ci_dispatch : tm :=
             (PBytes xx_bytes, Ret (VInt 2))]
            (Ret (VInt 0)))).
 
+(* ===== R13 sample (adr-0009 discipline — PListSnoc) ========================== *)
+
+(** COLLECTING FOLD (R13): build a reply of DATA-DEPENDENT length. The context is an
+    argv-style DList of byte KEYS; the accumulator is the reply DList under
+    construction (init [VList []]); the body OGets the current key and snocs ONE
+    tagged slot onto the acc:
+      hit  (DSome v) -> DTag 1 v      ("bulk": the stored value, any shape)
+      miss (DNone)   -> DTag 0 DUnit  ("nil": the key is absent/expired)
+    One slot per key, ORDER PRESERVED — the MGET-shaped consumer driver: Fold (R6)
+    eliminates lists, PListSnoc is what CONSTRUCTS one whose length is only known at
+    runtime; zero new term forms. A non-DList context makes the fold empty (result =
+    the init [DList []], adr-0012 §Decision 2 posture).
+
+    de Bruijn (body entry: db0 = acc, db1 = key — push_env [elem; acc]):
+      Bind (Perform OGet [key=db1])   — then db0 = lookup, db1 = acc, db2 = key
+      Match PSome (binds the value)   — then db0 = v, db1 = lookup, db2 = acc
+      PNone / default                 — db0 = lookup, db1 = acc (0 binders)
+    The Prim result IS the branch body's result = the next accumulator.
+    Proven end-to-end for a concrete seeded store in theories/Fold.v §9 (order, nil
+    slots, length = argv length, prepend mutant rejected). *)
+Definition sample_fold_collect : tm :=
+  Bind (Perform OAsk [])
+       (Fold (VVar 0) (Ret (VList []))
+             (Bind (Perform OGet [VVar 1])
+                   (Match (VVar 0)
+                      [(PSome, Prim PListSnoc [VVar 2; VTag 1 (VVar 0)]);
+                       (PNone, Prim PListSnoc [VVar 1; VTag 0 VUnit])]
+                      (Prim PListSnoc [VVar 1; VTag 0 VUnit])))).
+
 (** SINGLE SOURCE OF TRUTH for the program list. The codegen iterates this (so it emits one
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
@@ -525,4 +559,5 @@ Definition all_programs : list (string * tm) :=
     ("sample_journal"%string, sample_journal);
     ("sample_journal_throw"%string, sample_journal_throw);
     ("sample_ci_dispatch"%string, sample_ci_dispatch);
+    ("sample_fold_collect"%string, sample_fold_collect);
     ("demo_prog"%string, demo_prog) ].

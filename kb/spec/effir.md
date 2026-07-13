@@ -1,13 +1,13 @@
 ---
 id: effir
 type: spec
-summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R12 grammar (ASCII case-fold prims, append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
+summary: EffIR is a first-order, de-Bruijn, two-layer (pure val / effectful tm) typed term language; this file pins its v2 R13 grammar (list-snoc construction prim, ASCII case-fold prims, append-only Journal effect + floor-division prim, on top of bounded Fold, the expiring bytes-keyed store and Time), typing, and what is in and out of scope.
 domain: spec
 last-updated: 2026-07-13
 depends-on: [adr-0001-first-order-ast, effect-signatures, adr-0008-general-match, adr-0009-vprim-registry, adr-0010-structured-values, adr-0011-time-and-expiring-store, adr-0012-list-elimination, adr-0013-journal-effect, adr-0014-wf-checker]
 refines: []
 related: [reference-semantics, codegen, error-taxonomy, runtime-manifest]
-lint-max-lines: 210
+lint-max-lines: 216
 ---
 # Spec — EffIR (the first-order effect IR)
 
@@ -32,6 +32,9 @@ lint-max-lines: 210
 > EXTRACTED checker, no opt-out; emission core = `rocqeteer.codegen` ([[adr-0014-wf-checker]]).
 > R12 (2026-07-13): prims `PLowerBytes`/`PUpperBytes` — ASCII case folding (adr-0009 discipline:
 > ADR-free, manifest + diff-test; driver: case-insensitive option tokens; `theories/Prims.v` §6).
+> R13 (2026-07-13): prim `PListSnoc` — the minimal list-CONSTRUCTION capability (adr-0009 discipline;
+> driver: replies of data-dependent length via a collecting Fold — acc = the DList under construction,
+> body snocs one tagged slot per key; zero new term forms; `theories/Fold.v` §9).
 
 ## One-liner
 EffIR is the single first-order, explicit-binder representation that the reference interpreter evaluates
@@ -87,6 +90,8 @@ PDivFloor     DInt a, DInt b  -> DNone if b = 0 or result exits int64 (only int6
               (DInt (a/b)) — FLOOR (Rocq Z.div; realizer Z.fdiv, zarith Z.div truncates; driver: TTL rounding)
 PLowerBytes   DBytes bs       -> DBytes: bytes 65-90 shifted +32; EVERY other byte unchanged incl. >127 (R12)
 PUpperBytes   DBytes bs       -> DBytes: bytes 97-122 shifted -32; same non-letter posture — pure ASCII fold (R12)
+PListSnoc     DList vs, v     -> DList (vs ++ [v]) — v ANY dval incl. nested DList/DTag (one slot, never
+              concatenated); non-DList first arg -> DNone (R13; the minimal list CONSTRUCTION — realizer O(n)/snoc)
 ```
 **Strict parse grammar (DP1-DP8):**
 DP1 empty input → DNone · DP2 leading '-' → negative, advance · DP3 digits empty after

@@ -27,7 +27,14 @@
        val, [OErr e] carries any dval; nothing restricts e to DInt). The theorems below
        pin the OErr payload bytes EXACTLY, making the capability deliberate rather than
        incidental. No new machinery — R8 closes here.
-    8. Inhabitance (explicit witnesses) + the Print Assumptions block. *)
+    8. Inhabitance (explicit witnesses) + the Print Assumptions block.
+    9. R13 (PListSnoc, adr-0009 discipline — ADR-free prim, manifest + diff-test
+       mandatory): snoc boundary lemmas (empty/nonempty; DTag-tagged and nested-DList
+       elements; shape/arity mismatch -> DNone) and THE COLLECTING FOLD
+       [sample_fold_collect] proven end-to-end on a concrete SEEDED store (order
+       preserved, tagged-nil slots exactly at the missing/EXPIRED keys, reply length =
+       argv length); a PREPEND mutant (snoc -> cons — reversed reply) observably
+       rejected via a local mutant interpreter; inhabitance. *)
 
 From Stdlib Require Import ZArith List String Ascii.
 From Rocqeteer Require Import EffIR Samples.
@@ -418,6 +425,236 @@ Proof.
   vm_compute. reflexivity.
 Qed.
 
+(* ===== §9  R13: PListSnoc — the minimal list-construction capability ======== *)
+
+(** adr-0009 §Consequences discipline (ADR-free prim addition; manifest + differential
+    tests mandatory) — the anti-vacuity corpus for [PListSnoc]: closed vm_compute
+    lemmas at the shape boundaries, the COLLECTING FOLD sample proven end-to-end on a
+    concrete seeded store, an order mutant observably rejected, and inhabitance.
+    Witnesses stay EXPLICIT (theories/Prims.v header note). *)
+
+(** Snoc onto the empty list: the element becomes the single slot. *)
+Theorem list_snoc_empty :
+  apply_prim PListSnoc [DList []; DInt 7] = DList [DInt 7].
+Proof. vm_compute. reflexivity. Qed.
+
+(** Snoc onto a non-empty (mixed-shape) list: appended at the END, prefix untouched. *)
+Theorem list_snoc_nonempty :
+  apply_prim PListSnoc [DList [DInt 1; DBytes (list_ascii_of_string "y")]; DInt 3]
+  = DList [DInt 1; DBytes (list_ascii_of_string "y"); DInt 3].
+Proof. vm_compute. reflexivity. Qed.
+
+(** The appended element is ANY dval — a DTag-tagged slot (the reply-building shape)... *)
+Theorem list_snoc_tagged :
+  apply_prim PListSnoc
+    [DList [DTag 0 DUnit]; DTag 1 (DBytes (list_ascii_of_string "v"))]
+  = DList [DTag 0 DUnit; DTag 1 (DBytes (list_ascii_of_string "v"))].
+Proof. vm_compute. reflexivity. Qed.
+
+(** ... and a nested DList element (replies nest; the element is NOT concatenated). *)
+Theorem list_snoc_nested_list :
+  apply_prim PListSnoc [DList [DInt 1]; DList [DInt 2; DInt 3]]
+  = DList [DInt 1; DList [DInt 2; DInt 3]].
+Proof. vm_compute. reflexivity. Qed.
+
+(** First argument not a DList -> DNone (adr-0009 §Decision 2); arity mismatch too. *)
+Theorem list_snoc_mismatch_shape :
+  apply_prim PListSnoc [DInt 0; DInt 1] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem list_snoc_mismatch_bytes :
+  apply_prim PListSnoc [DBytes (list_ascii_of_string "k"); DInt 1] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem list_snoc_mismatch_arity_low :
+  apply_prim PListSnoc [DList []] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+Theorem list_snoc_mismatch_arity_high :
+  apply_prim PListSnoc [DList []; DInt 1; DInt 2] = DNone.
+Proof. vm_compute. reflexivity. Qed.
+
+(* ---- §9b  The collecting fold, end-to-end on a concrete seeded store ------- *)
+
+(** The concrete run: argv = [k1; k2; k3]; the store binds k1 (a bytes value, no
+    deadline), k2 EXPIRED (deadline -1 < now = 0 — semantically absent, adr-0011),
+    and k3 (an int value — bulk slots carry any shape). Expected reply: one slot per
+    key IN ORDER, DTag 1 v on the live hits, DTag 0 DUnit on the expired k2. *)
+Definition cv1 : dval := DBytes (list_ascii_of_string "v1").
+Definition cv3 : dval := DInt 33.
+
+Definition collect_store : state :=
+  M.add "k1"%string (cv1, None)
+    (M.add "k2"%string (DInt 2, Some (-1))    (* EXPIRED at now = 0: 0 <= -1 is false *)
+       (M.add "k3"%string (cv3, None) (M.empty entry))).
+
+Definition collect_argv : dval :=
+  DList [DBytes (list_ascii_of_string "k1");
+         DBytes (list_ascii_of_string "k2");
+         DBytes (list_ascii_of_string "k3")].
+
+Definition collect_expected : dval :=
+  DList [DTag 1 cv1; DTag 0 DUnit; DTag 1 cv3].
+
+Definition collect_world : world :=
+  mkWorld collect_store collect_argv 0 [] (M.empty dval) [].
+
+(** THE load-bearing end-to-end theorem: the reply is exactly [collect_expected] —
+    order preserved, the tagged nil in the k2 slot — the store observable keeps only
+    the live bindings (k2 filtered), no trace, no journal, and OGet wrote nothing. *)
+Theorem fold_collect_end_to_end :
+  observe_full collect_argv 0 collect_store sample_fold_collect
+  = (ORet collect_expected,
+     [("k1"%string, (cv1, None)); ("k3"%string, (cv3, None))],
+     [], []).
+Proof. vm_compute. reflexivity. Qed.
+
+(** Empty argv: the reply is the init accumulator — the empty DList (F1 posture). *)
+Theorem fold_collect_empty_argv :
+  fst (run [] sample_fold_collect
+         (mkWorld collect_store (DList []) 0 [] (M.empty dval) []))
+  = ORet (DList []).
+Proof. vm_compute. reflexivity. Qed.
+
+(** Non-DList argv: the fold is empty (adr-0012 §Decision 2) — still the empty DList. *)
+Theorem fold_collect_non_list_argv :
+  fst (run [] sample_fold_collect
+         (mkWorld collect_store (DInt 9) 0 [] (M.empty dval) []))
+  = ORet (DList []).
+Proof. vm_compute. reflexivity. Qed.
+
+(** LENGTH: one slot per key — the reply length equals the argv length (both sides
+    computed on the concrete sample). *)
+Theorem fold_collect_length :
+  (match fst (run [] sample_fold_collect collect_world) with
+   | ORet (DList slots) => Some (List.length slots)
+   | _                  => None
+   end)
+  = (match collect_argv with
+     | DList ks => Some (List.length ks)
+     | _        => None
+     end).
+Proof. vm_compute. reflexivity. Qed.
+
+(* ---- §9c  MUTANT: prepend instead of snoc ---------------------------------- *)
+
+(** The mutant applier — verbatim [apply_prim] behavior except [PListSnoc] PREPENDS
+    ([v :: vs]) instead of appending. EffIR is untouched (the local-mutant technique,
+    §2b above). *)
+Definition apply_prim_snocpre (p : prim) (args : list dval) : dval :=
+  match p, args with
+  | PListSnoc, [DList vs; v] => DList (v :: vs)   (* MUTANT: prepend, not append *)
+  | _, _                     => apply_prim p args
+  end.
+
+(** The mutant interpreter — verbatim [run], except the [Prim] case applies
+    [apply_prim_snocpre] (same nested-fix guardedness as the reference). *)
+Fixpoint run_snocpre (env : list dval) (t : tm) (w : world) : outcome * world :=
+  match t with
+  | Ret v        => (ORet (eval_val env v), w)
+  | Bind t1 t2   =>
+      match run_snocpre env t1 w with
+      | (ORet x, w') => run_snocpre (x :: env) t2 w'
+      | (OErr e, w') => (OErr e, w')
+      end
+  | Perform o args =>
+      let vs := map (eval_val env) args in
+      match o with
+      | OThrow => (OErr (nth 0 vs Dstuck), w)
+      | OAsk   => (ORet w.(ctx), w)
+      | ONow   => (ORet (DInt w.(now_ms)), w)
+      | OTrace => match vs with
+                  | [v] => (ORet DUnit, set_trace w (v :: w.(trace)))
+                  | _   => (ORet Dstuck, w)
+                  end
+      | OCacheGet => match vs with
+                     | [DBytes kb] =>
+                         (ORet (opt_to_dval (M.find (string_of_list_ascii kb) w.(cache))), w)
+                     | _        => (ORet Dstuck, w)
+                     end
+      | OCachePut => match vs with
+                     | [DBytes kb; v] =>
+                         (ORet DUnit, set_cache w (M.add (string_of_list_ascii kb) v w.(cache)))
+                     | _           => (ORet Dstuck, w)
+                     end
+      | OJournal => match vs with
+                    | [v] => (ORet DUnit, set_journal w ((w.(now_ms), v) :: w.(journal)))
+                    | _   => (ORet Dstuck, w)
+                    end
+      | _      => let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in (ORet r, set_kv w s')
+      end
+  | Match scrut branches default =>
+      let d := eval_val env scrut in
+      (fix try_branches (bs : list (pat * tm)) {struct bs} : outcome * world :=
+         match bs with
+         | []           => run_snocpre env default w
+         | (p, body) :: rest =>
+             match match_pat p d with
+             | Some payloads => run_snocpre (push_env payloads env) body w
+             | None => try_branches rest
+             end
+         end) branches
+  | Repeat n body =>
+      (fix loop (m : nat) (w0 : world) {struct m} : outcome * world :=
+         match m with
+         | O    => (ORet DUnit, w0)
+         | S m' => match run_snocpre env body w0 with
+                   | (ORet _, w1) => loop m' w1
+                   | (OErr e, w1) => (OErr e, w1)
+                   end
+         end) n w
+  | Prim p args =>
+      let vs := map (eval_val env) args in
+      (ORet (apply_prim_snocpre p vs), w)   (* MUTANT applier *)
+  | Fold lst init body =>
+      let d := eval_val env lst in
+      match run_snocpre env init w with
+      | (OErr e, w') => (OErr e, w')
+      | (ORet acc0, w') =>
+          match d with
+          | DList vs =>
+              (fix fold_elems (xs : list dval) (acc : dval) (w0 : world) {struct xs}
+                 : outcome * world :=
+                 match xs with
+                 | []       => (ORet acc, w0)
+                 | x :: xs' =>
+                     match run_snocpre (push_env [x; acc] env) body w0 with
+                     | (ORet acc', w1) => fold_elems xs' acc' w1
+                     | (OErr e, w1)    => (OErr e, w1)
+                     end
+                 end) vs acc0 w'
+          | _ => (ORet acc0, w')
+          end
+      end
+  end.
+
+(** Under the mutant, the SAME collecting fold on the SAME store yields the REVERSED
+    reply — the k1 bulk lands in the k3 slot... *)
+Theorem mutant_snocpre_reverses :
+  fst (run_snocpre [] sample_fold_collect collect_world)
+  = ORet (DList [DTag 1 cv3; DTag 0 DUnit; DTag 1 cv1]).
+Proof. vm_compute. reflexivity. Qed.
+
+(** ... so the prepend mutant is OBSERVABLY different from the reference —
+    [fold_collect_end_to_end] genuinely pins the snoc direction (the order
+    anti-vacuity, same posture as §2b's fold-right mutant). *)
+Theorem mutant_snocpre_observably_differs :
+  fst (run [] sample_fold_collect collect_world)
+  <> fst (run_snocpre [] sample_fold_collect collect_world).
+Proof. vm_compute. intro H. discriminate H. Qed.
+
+(* ---- §9d  Inhabitance ------------------------------------------------------ *)
+
+(** A (store, argv) pair satisfying the end-to-end statement exists, and the run
+    genuinely lands on the expected reply — explicit witness (snd of the closed run),
+    vm_compute only on a closed term. *)
+Lemma fold_collect_inhabited :
+  exists w, run [] sample_fold_collect collect_world = (ORet collect_expected, w).
+Proof.
+  exists (snd (run [] sample_fold_collect collect_world)).
+  vm_compute. reflexivity.
+Qed.
+
 (** Print Assumptions footprint — each must say "Closed under the global context". *)
 Print Assumptions fold_mixed_end_to_end.
 Print Assumptions fold_concat_forward.
@@ -462,5 +699,20 @@ Print Assumptions throw_bytes_commits_prefix.
 Print Assumptions throw_tagged_payload_exact.
 Print Assumptions fold_put_inhabited.
 Print Assumptions fold_guard_inhabited.
+Print Assumptions list_snoc_empty.
+Print Assumptions list_snoc_nonempty.
+Print Assumptions list_snoc_tagged.
+Print Assumptions list_snoc_nested_list.
+Print Assumptions list_snoc_mismatch_shape.
+Print Assumptions list_snoc_mismatch_bytes.
+Print Assumptions list_snoc_mismatch_arity_low.
+Print Assumptions list_snoc_mismatch_arity_high.
+Print Assumptions fold_collect_end_to_end.
+Print Assumptions fold_collect_empty_argv.
+Print Assumptions fold_collect_non_list_argv.
+Print Assumptions fold_collect_length.
+Print Assumptions mutant_snocpre_reverses.
+Print Assumptions mutant_snocpre_observably_differs.
+Print Assumptions fold_collect_inhabited.
 
 

@@ -17,6 +17,18 @@
           IN ORDER (asserted against the input, not just ref==fast), and a reversed
           list yields the reversed trace
 
+    R13 (adr-0009 discipline, PListSnoc) adds the COLLECTING-FOLD pass:
+    [sample_fold_collect] (argv-style DList of byte keys -> a reply DList built by
+    snoc-ing one tagged slot per key: Tag 1 v on a live hit, Tag 0 Unit on a
+    miss/expired key) through the reference-vs-generated pipeline over FUZZED SEEDED
+    STORES (values of every shape; deadlines absent, live, and EXPIRED). The expected
+    reply is computed independently from the seeded store and asserted as a VALUE on
+    both sides — order AND nil-slots, not just ref==fast. Classes (asserted):
+      M1 empty argv -> empty reply        M2 all keys hit
+      M3 all keys miss                    M4 mixed hit/miss slots in one reply
+      M5 duplicate keys in argv           M6 large argv (1000+ keys)
+      M7 non-list ctx -> empty reply (the empty-fold posture)
+
     Seeds are logged; every counterexample prints its seed for corpus replay.
     Reference == fast is asserted for every run. *)
 
@@ -40,11 +52,21 @@ type obs = {
   tr    : Rkv.Rval.t list;
 }
 
-let ref_obs (term : E.tm) (ctx : Rkv.Rval.t) : obs =
+(* [?store] seeds the initial state on BOTH sides (bytes key -> value + optional
+   deadline), the diff_store convention; the default empty store keeps the original
+   F1-F8 rounds unchanged. *)
+let ref_obs ?(store : (bytes * (Rkv.Rval.t * Z.t option)) list = [])
+    (term : E.tm) (ctx : Rkv.Rval.t) : obs =
   let coq_ctx = Coqconv.dval_of_rval ctx in
+  let m0 =
+    List.fold_left
+      (fun m (k, e) ->
+         E.M.add (Coqconv.coq_string_of_bytes k) (Coqconv.coq_entry_of_rval e) m)
+      E.M.empty store
+  in
   let oc, bindings, tr =
-    match E.observe coq_ctx (Coqconv.coqz_of_z now) term with
-    | D.Coq_pair (D.Coq_pair (oc, bs), t) -> (oc, bs, t)
+    match E.observe_full coq_ctx (Coqconv.coqz_of_z now) m0 term with
+    | D.Coq_pair (D.Coq_pair (D.Coq_pair (oc, bs), t), _journal) -> (oc, bs, t)
   in
   let out =
     match oc with
@@ -61,8 +83,10 @@ let ref_obs (term : E.tm) (ctx : Rkv.Rval.t) : obs =
   in
   { out; state; tr = Coqconv.list_of_coq tr |> List.map Coqconv.rval_of_dval }
 
-let fast_obs (fn : unit -> Rkv.Rval.t) (ctx : Rkv.Rval.t) : obs =
+let fast_obs ?(store : (bytes * (Rkv.Rval.t * Z.t option)) list = [])
+    (fn : unit -> Rkv.Rval.t) (ctx : Rkv.Rval.t) : obs =
   let table = Rkv.Kv.T.create 64 in
+  List.iter (fun (k, e) -> Rkv.Kv.T.replace table k e) store;
   let buf = ref [] in
   let out =
     Rkv.Env.run ctx (fun () ->
@@ -152,6 +176,127 @@ let programs : (string * E.tm * (unit -> Rkv.Rval.t)) list =
     ("sample_fold_concat", S.sample_fold_concat, Gen.sample_fold_concat);
     ("sample_fold_trace",  S.sample_fold_trace,  Gen.sample_fold_trace);
     ("sample_fold_guard",  S.sample_fold_guard,  Gen.sample_fold_guard) ]
+
+(* --- R13: the collecting fold (sample_fold_collect) over fuzzed stores -------- *)
+(* argv elements are always DBytes: a non-bytes KEY is ill-typed input (reference
+   yields a Dstuck lookup -> a nil slot, generated raises Rval.Stuck at the key
+   extraction — the standing R10 posture); differential rounds stay well-typed,
+   like every other key-position test. *)
+
+let cover_m1 = ref false and cover_m2 = ref false and cover_m3 = ref false
+let cover_m4 = ref false and cover_m5 = ref false and cover_m6 = ref false
+let cover_m7 = ref false
+
+let collect_pool : bytes list =
+  [ Bytes.empty;                (* empty key *)
+    Bytes.of_string "\x00";     (* NUL key *)
+    Bytes.of_string "a";
+    Bytes.of_string "a\x00";    (* same-prefix collision with "a" *)
+    Bytes.of_string "k1";
+    Bytes.of_string "k2";
+    Bytes.of_string "dup";
+    Bytes.of_string "big" ]
+
+(* Seed each pool key absent, live (no deadline / future deadline), or EXPIRED
+   (deadline -5 < now = 0): an expired key must produce a NIL slot exactly like an
+   absent one — liveness crosses the collecting fold. Values take gen_elem's full
+   shape mix (incl. nested Tag/Pair/None). *)
+let gen_collect_store () : (bytes * (Rkv.Rval.t * Z.t option)) list =
+  List.filter_map
+    (fun k ->
+       match Random.State.int rng 4 with
+       | 0 -> None                                            (* absent *)
+       | 1 -> Some (k, (gen_elem (), None))                   (* live, no deadline *)
+       | 2 -> Some (k, (gen_elem (), Some (Z.of_int 100)))    (* live: 0 <= 100 *)
+       | _ -> Some (k, (gen_elem (), Some (Z.of_int (-5)))))  (* EXPIRED: 0 <= -5 false *)
+    collect_pool
+
+let live_entry ((_, dl) : Rkv.Rval.t * Z.t option) : bool =
+  match dl with None -> true | Some d -> Z.geq d now
+
+let live_lookup store k =
+  List.find_map
+    (fun (k', e) -> if Bytes.equal k k' && live_entry e then Some e else None)
+    store
+
+(* The INDEPENDENTLY computed expected slot (the sample's reply grammar): Tag 1 v on
+   a live hit, Tag 0 Unit on a miss/expired key. *)
+let expected_slot store k : Rkv.Rval.t =
+  match live_lookup store k with
+  | Some (v, _) -> Rkv.Rval.Tag (Z.one, v)
+  | None        -> Rkv.Rval.Tag (Z.zero, Rkv.Rval.Unit)
+
+let collect_pass (fails : int ref) =
+  let pick l = List.nth l (Random.State.int rng (List.length l)) in
+  for _ = 1 to 300 do
+    let store = gen_collect_store () in
+    let hits   = List.filter (fun k -> Option.is_some (live_lookup store k)) collect_pool in
+    let misses = List.filter (fun k -> Option.is_none (live_lookup store k)) collect_pool in
+    let keys_of pool n = Rkv.Rval.List (List.init n (fun _ -> Rkv.Rval.Bytes (pick pool))) in
+    let cls, ctx =
+      match Random.State.int rng 12 with
+      | 0 -> (`M1, Rkv.Rval.List [])
+      | 1 | 2 ->
+          if hits = [] then (`Mx, Rkv.Rval.List [])       (* degenerate: no live key *)
+          else (`M2, keys_of hits (1 + Random.State.int rng 5))
+      | 3 | 4 ->
+          if misses = [] then (`Mx, Rkv.Rval.List [])     (* degenerate: no miss *)
+          else (`M3, keys_of misses (1 + Random.State.int rng 5))
+      | 5 | 6 | 7 -> (`M4, keys_of collect_pool (2 + Random.State.int rng 7))
+      | 8 ->
+          let k = pick collect_pool in
+          (`M5, Rkv.Rval.List [ Rkv.Rval.Bytes k; Rkv.Rval.Bytes k;
+                                Rkv.Rval.Bytes (pick collect_pool) ])
+      | 9  -> (`M6, keys_of collect_pool (1000 + Random.State.int rng 300))
+      | 10 -> (`M7, Rkv.Rval.Int (Z.of_int 5))
+      | _  -> (`M7, Rkv.Rval.Bytes (Bytes.of_string "not a list"))
+    in
+    let r = ref_obs ~store S.sample_fold_collect ctx in
+    let f = fast_obs ~store Gen.sample_fold_collect ctx in
+    if not (obs_eq r f) then begin
+      incr fails;
+      Printf.printf
+        "COLLECT MISMATCH (RSEED=%d) ctx=%s\n  ref =(%s, %s, %s)\n  fast=(%s, %s, %s)\n"
+        seed (Rkv.Rval.to_string ctx)
+        (show_out r.out) (show_state r.state) (show_tr r.tr)
+        (show_out f.out) (show_state f.state) (show_tr f.tr)
+    end;
+    (* VALUE assertion: the reply computed independently from the seeded store —
+       one slot per key IN ORDER, nils exactly at the misses (ref == fast was just
+       asserted, so pinning the reference pins both sides). *)
+    let expected =
+      match ctx with
+      | Rkv.Rval.List ks ->
+          Rkv.Rval.List
+            (List.map
+               (function
+                 | Rkv.Rval.Bytes b -> expected_slot store b
+                 | _ -> assert false          (* argv is bytes-only by construction *))
+               ks)
+      | _ -> Rkv.Rval.List []                 (* M7: the empty fold *)
+    in
+    (match r.out with
+     | Ok v when Rkv.Rval.equal v expected ->
+         (match cls with
+          | `M1 -> cover_m1 := true
+          | `M2 -> cover_m2 := true
+          | `M3 -> cover_m3 := true
+          | `M5 -> cover_m5 := true
+          | `M6 -> cover_m6 := true
+          | `M7 -> cover_m7 := true
+          | _ -> ());
+         (* M4: one reply carrying BOTH a bulk and a nil slot *)
+         (match expected with
+          | Rkv.Rval.List slots ->
+              let is_bulk = function Rkv.Rval.Tag (t, _) -> Z.equal t Z.one  | _ -> false in
+              let is_nil  = function Rkv.Rval.Tag (t, _) -> Z.equal t Z.zero | _ -> false in
+              if List.exists is_bulk slots && List.exists is_nil slots then cover_m4 := true
+          | _ -> ())
+     | _ ->
+         incr fails;
+         Printf.printf "COLLECT VALUE FAIL (RSEED=%d) ctx=%s\n  expected %s\n  got %s\n"
+           seed (Rkv.Rval.to_string ctx) (Rkv.Rval.to_string expected) (show_out r.out))
+  done
 
 (* --- coverage ----------------------------------------------------------------- *)
 
@@ -249,22 +394,35 @@ let () =
        Printf.printf "CONCAT SPOT-CHECK FAIL (RSEED=%d): ref=%s fast=%s\n"
          seed (show_out rc.out) (show_out fc.out));
 
+  (* R13: the collecting fold over fuzzed seeded stores (M1-M7). *)
+  collect_pass fails;
+
   let cov_ok =
     !cover_f1 && !cover_f2 && !cover_f3 && !cover_f4 && !cover_f5 && !cover_f6
     && !cover_f7 && !cover_f8
   in
+  let m_cov_ok =
+    !cover_m1 && !cover_m2 && !cover_m3 && !cover_m4 && !cover_m5 && !cover_m6
+    && !cover_m7
+  in
   Printf.printf
     "rounds=%d programs=%d fails=%d\n\
      coverage: F1(empty)=%b F2(singleton)=%b F3(large-1000+)=%b F4(mixed)=%b\n\
-     F5(error-mid-fold)=%b F6(acc-overflow)=%b F7(non-list)=%b F8(order-via-trace)=%b\n"
+     F5(error-mid-fold)=%b F6(acc-overflow)=%b F7(non-list)=%b F8(order-via-trace)=%b\n\
+     collect: M1(empty)=%b M2(all-hit)=%b M3(all-miss)=%b M4(mixed-slots)=%b\n\
+     M5(dup-keys)=%b M6(large-1000+)=%b M7(non-list)=%b\n"
     n (List.length programs) !fails
-    !cover_f1 !cover_f2 !cover_f3 !cover_f4 !cover_f5 !cover_f6 !cover_f7 !cover_f8;
-  if !fails = 0 && cov_ok then
+    !cover_f1 !cover_f2 !cover_f3 !cover_f4 !cover_f5 !cover_f6 !cover_f7 !cover_f8
+    !cover_m1 !cover_m2 !cover_m3 !cover_m4 !cover_m5 !cover_m6 !cover_m7;
+  if !fails = 0 && cov_ok && m_cov_ok then
     print_endline
       "FOLD DIFFERENTIAL OK: reference == fast (outcome+state+trace) over F1-F8; \
-       order asserted via trace; coverage asserted"
+       order asserted via trace; collecting fold (PListSnoc) over fuzzed stores M1-M7, \
+       reply value asserted (order + nil slots); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "FOLD COVERAGE GAP: a required class (F1-F8) was never exercised";
+    if not m_cov_ok then
+      print_endline "FOLD COVERAGE GAP: a required collect class (M1-M7) was never exercised";
     exit 1
   end

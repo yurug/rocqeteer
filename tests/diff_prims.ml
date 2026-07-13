@@ -41,7 +41,15 @@
     -32 for upper, every other byte fixed — incl. > 127); random mixed strings; empty;
     NUL-embedded; shape mismatches; plus [sample_ci_dispatch] (Env token ->
     PLowerBytes -> Match "nx"/"xx"/default) through the reference-vs-generated
-    pipeline with per-branch coverage (C1-C5) asserted. *)
+    pipeline with per-branch coverage (C1-C5) asserted.
+
+    R13 (adr-0009 discipline) adds PListSnoc direct rounds: random mixed-shape
+    lists x mixed-shape elements (incl. nested List/Tag), plus fixed VALUE-asserted
+    cases (not just ref==fast) pinning the ORDER — element at the END, prefix
+    untouched: empty list, large (1200-element) list, nested-list and tagged
+    elements, shape mismatches -> None. The collecting-fold sample itself
+    ([sample_fold_collect]) runs through the reference-vs-generated pipeline with
+    fuzzed stores in diff_fold.ml (M1-M7). *)
 
 module E   = Ref_extracted.EffIR
 module D   = Ref_extracted.Datatypes
@@ -320,7 +328,18 @@ let direct_prim_pass () =
     (* R12 prims: random mixed strings (gen_bytes is full-range 0-255, incl. empty and
        NUL-carrying) through both case folds *)
     check_prim "lower_bytes" E.PLowerBytes (app1 Rkv.Prims.prim_lower_bytes) [ba];
-    check_prim "upper_bytes" E.PUpperBytes (app1 Rkv.Prims.prim_upper_bytes) [bb]
+    check_prim "upper_bytes" E.PUpperBytes (app1 Rkv.Prims.prim_upper_bytes) [bb];
+    (* R13 prim: list snoc — mixed-shape lists x mixed-shape elements, incl. a nested
+       List and a Tag element (the reply-slot shape) *)
+    let sv =
+      match Random.State.int rng 5 with
+      | 0 -> ia
+      | 1 -> Rkv.Rval.Bytes (gen_bytes ())
+      | 2 -> Rkv.Rval.Tag (Z.one, ib)
+      | 3 -> gen_list_val ()   (* nested list element *)
+      | _ -> Rkv.Rval.Unit
+    in
+    check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [lv; sv]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -456,7 +475,41 @@ let direct_prim_pass () =
   check_prim "upper_bytes" E.PUpperBytes (app1 Rkv.Prims.prim_upper_bytes)
     [Rkv.Rval.Unit];
   check_prim "lower_bytes" E.PLowerBytes (app1 Rkv.Prims.prim_lower_bytes)
-    [Rkv.Rval.List [Rkv.Rval.Bytes (Bytes.of_string "NX")]]
+    [Rkv.Rval.List [Rkv.Rval.Bytes (Bytes.of_string "NX")]];
+  (* R13 fixed adversarial cases: PListSnoc. The VALUE is asserted (not just
+     ref==fast) so the ORDER is pinned on both sides — the element lands at the END,
+     the prefix is untouched (a prepend realizer must fail these). *)
+  let assert_snoc l v expect what =
+    let r = ref_prim E.PListSnoc [l; v] and f = Rkv.Prims.prim_list_snoc l v in
+    if not (Rkv.Rval.equal r expect && Rkv.Rval.equal f expect) then begin
+      incr prim_fails;
+      Printf.printf
+        "LIST_SNOC VALUE FAIL (RSEED=%d) %s: expected %s, ref=%s fast=%s\n"
+        seed what (Rkv.Rval.to_string expect)
+        (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+    end
+  in
+  (* empty list: the element becomes the single slot *)
+  assert_snoc (Rkv.Rval.List []) (zi 7) (Rkv.Rval.List [zi 7]) "snoc onto empty";
+  (* order: element at the END, not the front *)
+  assert_snoc (Rkv.Rval.List [zi 1; zi 2]) (zi 3)
+    (Rkv.Rval.List [zi 1; zi 2; zi 3]) "snoc order (end, not front)";
+  (* nested shapes: a List element is ONE slot (never concatenated); Tag slots nest *)
+  assert_snoc (Rkv.Rval.List [zi 1]) (Rkv.Rval.List [zi 2; zi 3])
+    (Rkv.Rval.List [zi 1; Rkv.Rval.List [zi 2; zi 3]]) "nested list element";
+  assert_snoc (Rkv.Rval.List [Rkv.Rval.Tag (Z.zero, Rkv.Rval.Unit)])
+    (Rkv.Rval.Tag (Z.one, Rkv.Rval.Bytes (Bytes.of_string "v")))
+    (Rkv.Rval.List [Rkv.Rval.Tag (Z.zero, Rkv.Rval.Unit);
+                    Rkv.Rval.Tag (Z.one, Rkv.Rval.Bytes (Bytes.of_string "v"))])
+    "tagged element";
+  (* LARGE (1000+): the whole 1200-element prefix survives IN ORDER *)
+  let big = List.init 1200 (fun i -> Rkv.Rval.Int (Z.of_int i)) in
+  assert_snoc (Rkv.Rval.List big) (zi 1200)
+    (Rkv.Rval.List (big @ [zi 1200])) "large 1200-element snoc";
+  (* shape mismatches: both sides must agree on None *)
+  check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [zi 0; zi 1];
+  check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc)
+    [Rkv.Rval.Bytes (Bytes.of_string "k"); zi 1]
 
 (* --- R12 pipeline pass: sample_ci_dispatch ---------------------------------- *)
 (* Case-insensitive dispatch through the FULL reference-vs-generated pipeline: the
@@ -618,7 +671,7 @@ let () =
     !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16
     !cover_c1 !cover_c2 !cover_c3 !cover_c4 !cover_c5;
   if !fails = 0 && !prim_fails = 0 && !ci_fails = 0 && cov_ok && ci_cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 15 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5); coverage asserted"
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 16 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5 + list snoc order pinned); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";

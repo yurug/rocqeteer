@@ -65,7 +65,17 @@
     97-122 ('a'-'z') shifted -32 (upper); EVERY other byte unchanged, including bytes
     > 127 (a pure ASCII fold: no locale, no UTF-8). Total; shape mismatch -> DNone.
     Consumer driver: case-insensitive command option tokens (inexpressible with the
-    exact [PEqBytes]). *)
+    exact [PEqBytes]).
+
+    IR v2 R13 (2026-07-13, adr-0009 discipline — ADR-free prim addition, manifest +
+    diff-test mandatory): [PListSnoc] — the minimal list-CONSTRUCTION capability,
+    arity 2, [DList vs; v] -> [DList (vs ++ [v])]: append [v] at the END. The appended
+    element is ANY dval (incl. another [DList]/[DTag] — replies nest); a first argument
+    that is not a [DList] -> DNone (the adr-0009 shape posture). Total, order-preserving.
+    Consumer driver: building replies of DATA-DEPENDENT length — [Fold] (R6) can
+    eliminate lists but nothing constructs one whose length is runtime-determined; a
+    collecting fold (acc = the DList under construction, body snocs) closes the gap with
+    ZERO new term forms ([sample_fold_collect], proven in theories/Fold.v §9). *)
 
 From Stdlib Require Import ZArith List FMapAVL OrderedTypeEx Ascii String Bool.
 Import ListNotations.
@@ -158,7 +168,8 @@ Inductive prim : Type :=
 | PListNth      (** DList vs, DInt i -> DSome v_i if 0 <= i < len; DNone otherwise (R6) *)
 | PDivFloor     (** DInt a, DInt b -> DNone if b = 0, else DSome (DInt (a / b)) — FLOOR (R9) *)
 | PLowerBytes   (** DBytes bs -> DBytes (ASCII fold: 65-90 shifted +32; every other byte unchanged) (R12) *)
-| PUpperBytes.  (** DBytes bs -> DBytes (ASCII fold: 97-122 shifted -32; every other byte unchanged) (R12) *)
+| PUpperBytes   (** DBytes bs -> DBytes (ASCII fold: 97-122 shifted -32; every other byte unchanged) (R12) *)
+| PListSnoc.    (** DList vs, v -> DList (vs ++ [v]) — v is ANY dval; non-DList first arg -> DNone (R13) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -379,6 +390,7 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
   | PDivFloor,    [DInt a; DInt b]     => apply_div_floor a b
   | PLowerBytes,  [DBytes bs]          => apply_lower_bytes bs
   | PUpperBytes,  [DBytes bs]          => apply_upper_bytes bs
+  | PListSnoc,    [DList vs; v]        => DList (vs ++ [v])   (* append at the END (R13) *)
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 
