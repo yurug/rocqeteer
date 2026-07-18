@@ -1,0 +1,6 @@
+; The effects gallery: one small, heavily-commented file per effect family,
+; each with machine-checked instance theorems. Compiled by `dune build` (and
+; therefore by `make all`), so the gallery in the README can never rot.
+(rocq.theory
+ (name RocqeteerGallery)
+ (theories Rocqeteer Stdlib))

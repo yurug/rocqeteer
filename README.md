@@ -9,7 +9,10 @@ runtime — native data, effect handlers, direct-style execution. One first-orde
 (**EffIR**) is shared by the Rocq reference interpreter and the OCaml code generator, so *the program you
 prove and the program you run cannot silently become different programs*.
 
-> **Status:** the **KV vertical slice** (a key-value state effect) is complete end-to-end and verified.
+> **Status:** IR v2 is complete (12 effect operations, general `Match`, `Fold`, 16 checked primitives,
+> a well-formedness checker, and a weakest-precondition program logic — 413 closed theorems, zero
+> axioms), and the toolchain has its first real consumer: **redoq**, a Redis-compatible server whose
+> 22 data commands, RESP codecs and append-only-file recovery are proven with exactly these tools.
 > Built with the spec-driven methodology in `agentic-dev-kit/`. The full design rationale, decisions, and
 > the premortem that shaped them live in the knowledge base — start at [`kb/INDEX.md`](kb/INDEX.md).
 
@@ -29,6 +32,30 @@ Rocq EffIR term ──extract──▶ reference interpreter ─┐
        │                                            ├─▶ differential test (ref == fast?) ─▶ TCB report
        └──────codegen──────▶ direct-style OCaml ────┘
 ```
+
+## The effects
+
+Twelve operations over one explicit `world`, grouped into eight effect families. Every family has a
+compiled, proven example in the **[effects gallery](examples/README.md)** (`examples/` builds with
+`make all`, so the gallery cannot rot), and a theory file with the general laws.
+
+| Effect | Ops | One line | Gallery |
+|---|---|---|---|
+| **Keyed store** | `OGet` · `OPut` · `ODelete` | bytes-keyed state; per-key frame clauses | [`KeyedStore.v`](examples/KeyedStore.v) |
+| **Expiry** | `OSetDeadline` · `OGetDeadline` | per-binding TTLs; live iff `now ≤ deadline` — expired = absent | [`Expiry.v`](examples/Expiry.v) |
+| **Time** | `ONow` | one injected instant per run: deterministic by construction, replayable | [`Clock.v`](examples/Clock.v) |
+| **Errors** | `OThrow` | aborting exceptions with *structured* payloads; pre-throw effects commit | [`Throw.v`](examples/Throw.v) |
+| **Environment** | `OAsk` | the Reader: immutable request/config context | [`Ask.v`](examples/Ask.v) |
+| **Trace** | `OTrace` | the Writer: provable, ordered, structured logging | [`Tracing.v`](examples/Tracing.v) |
+| **Cache** | `OCacheGet` · `OCachePut` | a memo table invisible to the observable — "only an optimization" is structural | [`Memo.v`](examples/Memo.v) |
+| **Journal** | `OJournal` | write-only timestamped log; a proven frame law makes durability an afterthought | [`Journaling.v`](examples/Journaling.v) |
+
+The glue between the effects — general `Match` over tagged values, the bounded `Repeat` loop, the
+`Fold` list eliminator, and 16 total *checked* primitives (overflow and parse failure yield an option,
+never garbage) — has its own gallery entry: [`Combinators.v`](examples/Combinators.v). On top of the
+instance theorems, a shallow weakest-precondition **program logic**
+([`theories/Logic.v`](theories/Logic.v), zero added trust) supports ∀-quantified specifications —
+see [`theories/LogicDemo.v`](theories/LogicDemo.v).
 
 ## Quick start
 
@@ -85,6 +112,7 @@ has no undocumented drift.
 
 ```
 theories/     Rocq: EffIR + reference interpreter (EffIR.v), proofs (KV.v), sample programs (Samples.v)
+examples/     the effects gallery: one proven, compiled demo file per effect (see examples/README.md)
 extraction/   Separate Extraction of EffIR + terms -> the `ref_extracted` OCaml library
 codegen/      rocq-eff-codegen: lowers the extracted EffIR ADT to direct-style OCaml
 runtime/      trusted OCaml realizers (kv.ml: effect + deep handler; .mli hides the constructors)
@@ -106,14 +134,16 @@ extraction list to keep in sync. (Add a differential test only if it exercises a
 
 ## Roadmap (post-slice)
 
-**Done so far** (each proven axiom-free + differentially/property tested): the five-effect MVP family —
-**State, Error, Env, Trace, Cache** — composed; **bounded recursion** (`Repeat`, proven by induction); and a
-**typed binary codec pilot** with a *proven* round-trip (`theories/Codec.v`) and a GADT/`bytes` realizer with
-no unsafe casts. Still open: general `Match`/`VPrim` + an IR typechecker, generated effect/handler modules,
-abstract type realization, and (once packaged for Rocq 9.x) Mode B via MetaRocq. Built reality vs. the fuller
-design is recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
+**Done** (each proven axiom-free + differentially/property tested): the eight-effect family above,
+composed; **bounded recursion** (`Repeat`, proven by induction) and **list elimination** (`Fold`, with
+invariant rules); general **`Match`** and the 16-prim **`VPrim` registry**; a **well-formedness
+checker** with a general scope-soundness theorem; the **Journal** effect with a general frame law; a
+**typed binary codec pilot** with a *proven* round-trip (`theories/Codec.v`); and the **program
+logic** (R14). Still open: value-shape typing (R10 phase 2), generated effect/handler modules,
+abstract type realization, and (once packaged for Rocq 9.x) Mode B via MetaRocq. Built reality vs.
+the fuller design is recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
 
 ## License
 
-MIT (see source headers).
+BSD-3-Clause (see [`LICENSE`](LICENSE)).
 </content>
