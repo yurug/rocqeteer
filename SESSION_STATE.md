@@ -154,3 +154,13 @@ d-1/d/d+1 asserted per key, NUL/prefix-collision/empty keys, coverage K/D/P asse
 (3000 runs, 0/negative/2^62/overflow, reference-now == fast-source-now). make all green except the
 expected check_tcb git-drift FAIL (tcb_report.md regenerated, uncommitted); make demo green;
 kb-lint clean; 67 Print Assumptions all "Closed under the global context".
+
+## 2026-07-18 — public README: effects list + gallery (user request)
+Repo is PUBLIC since 2026-07-17 (BSD-3, copyright Nomadic Labs). Added examples/ (RocqeteerGallery
+theory, own dune, builds with make all): one proven demo file per effect family — KeyedStore, Expiry,
+Clock, Throw, Ask, Tracing, Memo, Journaling, Combinators (27 vm_compute instance theorems, each file
+header links to the general theory). examples/README.md = the gallery index. README.md gained "The
+effects" table (12 ops / 8 families -> gallery links), status refreshed to IR v2 complete + first
+consumer redoq, roadmap done-items corrected (Match/VPrim/Wf/Journal/Logic), license section fixed
+MIT->BSD-3. make all green incl. gallery; pushed 3edfc70. Theorem count verified 413 (theories) + 27
+(examples).
