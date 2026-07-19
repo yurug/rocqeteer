@@ -6,13 +6,14 @@
    honest. A wf-gate rejection has already printed the loud message to stderr — exit
    nonzero so the whole build fails (adr-0014 §4, no opt-out).
 
-   With [--elab] (ADR-0016 mode K) it iterates [Elab.elab_programs] instead — the
-   SAME list, pre-elaborated IN ROCQ by the proven Expiry elaboration (theories/
-   Elab.v, elab_simulates): no elaboration logic lives in this trusted driver. *)
+   With [--elab] (ADR-0016 mode K) it iterates [ElabNs.elab_full_programs]
+   instead — the SAME list, pre-elaborated IN ROCQ by the proven FULL tower
+   (consolidation elab_ns then Expiry elab; theories/ElabNs.v elab_full_simulates):
+   no elaboration logic lives in this trusted driver. *)
 let () =
   let programs =
     if Array.length Sys.argv > 1 && Sys.argv.(1) = "--elab" then
-      Ref_extracted.Elab.elab_programs
+      Ref_extracted.ElabNs.elab_full_programs
     else Ref_extracted.Samples.all_programs
   in
   try Rocqeteer_codegen.Emit.emit_programs Format.std_formatter programs

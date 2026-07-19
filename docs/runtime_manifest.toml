@@ -27,7 +27,7 @@ backend      = "Hashtbl(bytes) of (Rval.t * deadline option) + Effect.Deep handl
 key_type     = "bytes (byte strings; reference converts list ascii -> string keys)"
 value_type   = "Rval.t + optional absolute deadline (Z, ms)"
 deadline_semantics = "live iff now <= d (alive AT the deadline, dead at d+1ms); (v, None) never expires; Put CLEARS the deadline; Delete returns live-removal; expired = absent for every op and for observe. Boundary validated by the 12,500-case prediction-vs-oracle run (verdis O1, 0 mismatches) and re-asserted per key at d-1/d/d+1 by diff_store; the < mutant is rejected in theories/TimeStore.v"
-discharge    = "derived(Elab.elab_simulates) — ADR-0016 C1: the EXPIRY surface (deadline liveness in Get/Delete, GetDeadline, SetDeadline) is dischargeable, not irreducible: theories/Elab.v proves (axiom-free, no wf side condition) that every program's expiry behavior equals its elaboration over the KERNEL fragment (plain Get/Put/Delete + Now); the < mutant elaboration is observably rejected at the boundary. Mode K runs the elaborated programs (generated/progk_generated.ml) against Store_kernel below — CI witness diff_store_k. This fused realizer stays trusted-and-tested in mode F (production default) as a PERFORMANCE option."
+discharge    = "derived(Elab.elab_simulates) — ADR-0016 C1: the EXPIRY surface (deadline liveness in Get/Delete, GetDeadline, SetDeadline) is dischargeable, not irreducible: theories/Elab.v proves (axiom-free, no wf side condition) that every program's expiry behavior equals its elaboration over the KERNEL fragment (plain Get/Put/Delete + Now); the < mutant elaboration is observably rejected at the boundary. Mode K runs the COMPOSED tower (ElabNs.elab_full_simulates: consolidation + Expiry; generated/progk_generated.ml) against Store_kernel below — CI witnesses diff_store_k/diff_cache_k/diff_journal_k. This fused realizer stays trusted-and-tested in mode F (production default) as a PERFORMANCE option."
 tests        = ["diff_test", "diff_kv", "diff_store"]
 owner        = "yann"
 
@@ -36,9 +36,9 @@ ocaml_module = "Rkv.Kv (run_kernel / run_kernel_checked / observe_kernel)"
 ops          = ["Get", "Put", "Delete"]
 backend      = "Hashtbl(bytes) of Rval.t + Effect.Deep handler, one-shot continue; NO deadline logic, NO clock coupling; GetDeadline/SetDeadline deliberately UNHANDLED (an escaping deadline op is a loud Unhandled_effect at the checked boundary, never a silent wrong answer)"
 key_type     = "bytes"
-value_type   = "Rval.t (mode K stores the PACKED Pair(v, deadline-encoding) values the proven elaboration writes)"
+value_type   = "Rval.t (mode K stores the PACKED Pair(v, deadline-encoding) values the proven elaboration writes; keys partition into the u/c/j regions — user store, consolidated cache, consolidated journal — by the C2 injective escaping)"
 discharge    = "kernel-v1 — irreducible at this level; dischargeable only by a future lower kernel (adr-0016 §6)"
-tests        = ["diff_store_k"]
+tests        = ["diff_store_k", "diff_cache_k", "diff_journal_k"]
 owner        = "yann"
 
 [effect."Time"]
@@ -47,6 +47,7 @@ ops          = ["Now"]
 backend      = "Effect.Deep handler resuming with a read of an INJECTABLE source closure (unit -> Z, ms); production default wall_clock_ms = Unix.gettimeofday * 1000 truncated (unix ships with the compiler — no new opam dep); tests inject a virtual clock stepped only BETWEEN runs"
 value_type   = "Z (ms since epoch; one instant per run)"
 tests        = ["diff_time"]
+discharge    = "kernel-v1 — the injected instant is irreducible at this level (adr-0016 §6); a schedule/clock oracle kernel is the C5 concurrency design space"
 owner        = "yann"
 
 [assumption."Runtime_SingleTimeSource_refines"]
@@ -63,6 +64,7 @@ ops          = ["Throw"]
 backend      = "native exception (Runtime_error of Z) behind run_error; aborts, commits prior state"
 error_type   = "Z (zarith)"
 tests        = ["diff_err"]
+discharge    = "kernel-v1 — abort/unwind is irreducible at this level (adr-0016 §6)"
 owner        = "yann"
 
 [assumption."Runtime_Error_refines"]
@@ -79,6 +81,7 @@ ops          = ["Ask"]
 backend      = "Effect.Deep handler resuming with the read-only context value"
 ctx_type     = "Z (zarith)"
 tests        = ["diff_env"]
+discharge    = "kernel-v1 — the injected context is irreducible at this level (adr-0016 §6)"
 owner        = "yann"
 
 [assumption."Runtime_Env_refines"]
@@ -95,6 +98,7 @@ ops          = ["Emit"]
 backend      = "Effect.Deep handler appending to a buffer (newest-first; contents reverses)"
 event_type   = "Z (zarith)"
 tests        = ["diff_trace"]
+discharge    = "kernel-v1 — the ordered event log is irreducible at this level (adr-0016 §6); it IS the kernel-level observability primitive"
 owner        = "yann"
 
 [assumption."Runtime_Trace_refines"]
@@ -112,6 +116,7 @@ backend      = "Effect.Deep handler over a separate Hashtbl; never exposed by ob
 key_type     = "bytes (one key discipline across value-keyed effects since R4)"
 value_type   = "Rval.t (no deadlines — memoization has no expiry semantics)"
 tests        = ["diff_cache"]
+discharge    = "derived(ElabNs.elab_ns_simulates) — ADR-0016 C2: FAITHFULLY store-backed (the null elaboration is UNSOUND — adr-0016 Corrections 1, ElabNs.mutant_cache_rejected): cache entries live in the c-region of the kernel store under injective key escaping. Mode K has NO cache realizer — CI witness diff_cache_k (cold == warm == reference). This realizer stays a mode-F PERFORMANCE option."
 owner        = "yann"
 
 [assumption."Runtime_Cache_invisible"]
@@ -331,6 +336,7 @@ ops          = ["Append"]
 backend      = "Effect.Deep handler appending (now_ms, Rval.t) to a per-run buffer (newest-first; contents reverses to chronological) + optional per-entry sink callback (unit if absent); the timestamp is read from the SAME injectable source instance as the Time and Store handlers (Runtime.with_store_time_and_journal, one source — R9, adr-0013)"
 entry_type   = "(Z ms, Rval.t) — entries within one run share the run's single instant (adr-0011)"
 tests        = ["diff_journal"]
+discharge    = "derived(ElabNs.elab_ns_simulates) — ADR-0016 C2: the journal is ONE chronological DList at the j key of the kernel store (injective escaping; the forgetful mutant is rejected — ElabNs.mutant_journal_rejected). Mode K has NO journal realizer — CI witness diff_journal_k (order, throw-prefix survival, timestamps). This realizer (buffer + sink) stays a mode-F option; durability remains named consumer trust (adr-0013)."
 owner        = "yann"
 
 [assumption."Runtime_Journal_refines"]

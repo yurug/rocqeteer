@@ -42,7 +42,13 @@ liveness at the elaborated level), mode-K codegen path (extracted `elab` compose
 - **DoD:** theorem axiom-free with mutants + inhabitance; `make all` green with mode-K `diff_store`
   (coverage assertions unchanged); Store manifest entry's expiry aspect flips to `derived(<theorem>)`.
 
-## C2 — Cache + Journal consolidation layer + the discharge column (CORRECTED design, adr-0016 §Corrections)
+## C2 — Cache + Journal consolidation + discharge column — ✅ DONE 2026-07-19 (same-day as C1)
+Delivered per the corrected design: `theories/ElabNs.v` (elab_ns + elab_full, 15/15 Print Assumptions
+closed, unconditional); mode K = the composition, one artifact, kernel realizers only;
+`diff_cache_k`/`diff_journal_k` green first run; discharge field on every effect entry +
+`ci/check_discharge.sh` gate; README tower column + claim wording.
+
+### (original scope, for the record)
 The null cache elaboration is unsound (put-then-get distinguishes) and a syntactic namespace check
 cannot bound runtime-computed keys — so C2 builds ONE consolidation layer `elab_ns` below Expiry:
 store keys escaped `"u"++k`, cache faithfully store-backed at `"c"++k`, journal a chronological DList

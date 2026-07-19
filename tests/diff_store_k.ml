@@ -83,26 +83,36 @@ let ref_obs (term : E.tm) (now : Z.t) (pairs : (bytes * entry) list) : obs =
 
 (* --- fast-K side: the ELABORATED programs over the kernel store --------------- *)
 
-(** The theorem's packing, test-side: entry -> the packed kernel value. *)
+(** The theorem's packing, test-side: entry -> the packed kernel value, stored at
+    the "u"-ESCAPED key (C2, elab_full: consolidation escapes user store keys). *)
 let pack_entry ((v, dl) : entry) : Rkv.Rval.t =
   Rkv.Rval.Pair
     (v, match dl with
         | None -> Rkv.Rval.None
         | Some d -> Rkv.Rval.Some (Rkv.Rval.Int d))
 
-(** The theorem's projection, test-side: unpack a kernel binding and apply the
-    liveness filter (live iff now <= d) — dead packed bindings are ABSENT from the
-    mode-K observable, mirroring the reference live_elements. *)
-let unpack_live (now : Z.t) ((k, pv) : bytes * Rkv.Rval.t) : (bytes * entry) option =
-  match pv with
-  | Rkv.Rval.Pair (v, Rkv.Rval.None) -> Some (k, (v, None))
-  | Rkv.Rval.Pair (v, Rkv.Rval.Some (Rkv.Rval.Int d)) ->
-      if Z.leq now d then Some (k, (v, Some d)) else None
-  | _ -> failwith "diff_store_k: kernel store holds a non-packed value"
+let esc_u (k : bytes) : bytes = Bytes.cat (Bytes.of_string "u") k
+
+(** The theorem's projection, test-side: keep the "u" region (stripped), unpack,
+    liveness-filter; the "c"/"j" regions are the consolidated cache/journal — not
+    part of the user-store observable (the reference [observe] hides them too). *)
+let unpack_live (now : Z.t) ((km, pv) : bytes * Rkv.Rval.t) : (bytes * entry) option =
+  if Bytes.length km = 0 then failwith "diff_store_k: empty kernel key"
+  else
+    match Bytes.get km 0 with
+    | 'u' ->
+        let k = Bytes.sub km 1 (Bytes.length km - 1) in
+        (match pv with
+         | Rkv.Rval.Pair (v, Rkv.Rval.None) -> Some (k, (v, None))
+         | Rkv.Rval.Pair (v, Rkv.Rval.Some (Rkv.Rval.Int d)) ->
+             if Z.leq now d then Some (k, (v, Some d)) else None
+         | _ -> failwith "diff_store_k: kernel store holds a non-packed value")
+    | 'c' | 'j' -> None
+    | _ -> failwith "diff_store_k: kernel key outside the u/c/j regions"
 
 let fastk_obs (fn : unit -> Rkv.Rval.t) (now : Z.t) (pairs : (bytes * entry) list) : obs =
   let table = Rkv.Kv.T.create 64 in
-  List.iter (fun (k, e) -> Rkv.Kv.T.replace table k (pack_entry e)) pairs;
+  List.iter (fun (k, e) -> Rkv.Kv.T.replace table (esc_u k) (pack_entry e)) pairs;
   let out =
     (* Time outermost, kernel store inside — the kernel handler itself never reads
        the clock; only the elaborated code's Time.now calls do. *)

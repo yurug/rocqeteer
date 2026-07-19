@@ -30,6 +30,7 @@ ci-checks: build-fast test ## TCB / forbidden-API gates (require the differentia
 	./ci/check_no_stray_perform.sh
 	./ci/check_no_admitted.sh
 	./ci/check_generated_fresh.sh
+	./ci/check_discharge.sh
 	./ci/check_tcb.sh
 	./ci/check_kb_lint.sh
 

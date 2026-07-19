@@ -219,7 +219,40 @@ asserted. From-clean `make all`: theory+extraction+codegen+17 test suites+demo g
 pass (tcb drift = this commit's intended change). TCB: expiry semantics now PROVEN, not trusted —
 the fused kv.ml realizer is a mode-F performance option.
 
-## Exact next step (post-C1)
-**C2** (plan-towers): `elab_cache` (null elaboration via cache_invisible) + `elab_journal` (reserved
-kernel key + adr-0014 namespace wf extension) + manifest `discharge` field schema/CI check + README
-"The effects" kernel/derived column — the PRE-redoq-ANNOUNCEMENT item.
+## 2026-07-19 — C2 DONE: the consolidation tower (cache + journal + escaping) — mode K is FULLY kernel
+Design CORRECTED at proof time (adr-0016 §Corrections, committed 80ac82e BEFORE implementation):
+(1) null cache elaboration UNSOUND (put-then-get distinguishes — now the vm_compute mutant witness
+mutant_cache_rejected); (2) syntactic reserved-namespace wf cannot bound runtime-computed keys →
+TOTAL INJECTIVE KEY ESCAPING inside the elaboration: user keys "u"++k, cache "c"++k, journal "j" —
+first-byte partition, collisions structurally impossible, theorems UNCONDITIONAL, adr-0014 untouched.
+**theories/ElabNs.v** (~1000 lines, 15/15 Print Assumptions closed): elab_ns (one consolidation
+layer: 5 store ops escaped + faithful store-backed cache + journal as chronological DList at "j";
+wrong-arity cache/journal ops → Ret dstuck_val so ZERO cache/journal ops survive), nsrel (three-armed
+find view + empty mid cache/journal), elab_ns_simulates (same skeleton as C1), elab_full = elab ∘
+elab_ns + elab_full_simulates (relation-composed) + elab_full_run_top; wf_elab_ns/full; anti-vacuity:
+cache put-get + journal 2-append probes through the FULL tower (vm), null-cache + forgetful-journal
+mutants rejected, chained-update nsrel_inhabited (nonempty store+cache+journal witness).
+Proof-engineering notes (remember): bare cbn near M.find/M.add unfolds M.Raw internals and FMapFacts
+rewrites stop matching — use cbn [ns_view] / conversion lemmas (view_u/c/j0 by reflexivity); entry
+type ascriptions matter (a pair literal elaborates at dval*option Z ≠ entry and rewrite misses);
+`try reflexivity` after repeat split can close vm-computable run-equalities by conversion (count
+bullets accordingly).
+**Pipeline**: --elab now emits ElabNs.elab_full_programs → progk_generated.ml is the COMPOSED tower
+(0 cache/journal/deadline calls — grep-verified); diff_store_k reseeded/observed through the u/c/j
+regions; NEW diff_cache_k (3000: cold==warm==reference, CW/CH coverage; NO cache handler in the
+stack) + diff_journal_k (300×3×2: outcome+state+trace+decoded-journal, JK1-JK8 incl. throw-prefix
+survival and order==input; NO journal handler). Manifest: discharge field on EVERY effect entry
+(Store/Cache/Journal derived(<thm>), Time/Error/Env/Trace/Store_kernel kernel-v1) + NEW
+ci/check_discharge.sh (field present + derived theorems exist in theories/) wired into ci-checks.
+README: tower column in "The effects" + the mode-K/mode-F claim paragraph (adr-0004 wording
+discipline). From-clean make all: 19 suites green (3 mode-K), all gates pass.
+**TCB bottom line: mode K's trusted effect surface = {Store_kernel, Time, Throw, Ask, Trace} — 5
+kernel families; Expiry/Cache/Journal are THEOREMS.** Mode F byte-identical (fused realizers =
+performance options; tower-rationale.md holds the why-it-matters arguments).
+
+## Exact next step (post-C2)
+Phase C continues per kb/plan-towers.md: **C3** — application 2, a Unix file tool forcing the first
+genuinely low-level family (fd byte-stream I/O + process context), ADR-0017 FIRST (family shapes,
+error surface, world model for descriptors, realizer contracts), differential vs coreutils.
+Also pending from the rationale (user-visible): a redoq mode-K CI leg + measuring the mode-K cost
+on redoq's bench at the next pin bump.

@@ -39,16 +39,28 @@ Twelve operations over one explicit `world`, grouped into eight effect families.
 compiled, proven example in the **[effects gallery](examples/README.md)** (`examples/` builds with
 `make all`, so the gallery cannot rot), and a theory file with the general laws.
 
-| Effect | Ops | One line | Gallery |
-|---|---|---|---|
-| **Keyed store** | `OGet` · `OPut` · `ODelete` | bytes-keyed state; per-key frame clauses | [`KeyedStore.v`](examples/KeyedStore.v) |
-| **Expiry** | `OSetDeadline` · `OGetDeadline` | per-binding TTLs; live iff `now ≤ deadline` — expired = absent | [`Expiry.v`](examples/Expiry.v) |
-| **Time** | `ONow` | one injected instant per run: deterministic by construction, replayable | [`Clock.v`](examples/Clock.v) |
-| **Errors** | `OThrow` | aborting exceptions with *structured* payloads; pre-throw effects commit | [`Throw.v`](examples/Throw.v) |
-| **Environment** | `OAsk` | the Reader: immutable request/config context | [`Ask.v`](examples/Ask.v) |
-| **Trace** | `OTrace` | the Writer: provable, ordered, structured logging | [`Tracing.v`](examples/Tracing.v) |
-| **Cache** | `OCacheGet` · `OCachePut` | a memo table invisible to the observable — "only an optimization" is structural | [`Memo.v`](examples/Memo.v) |
-| **Journal** | `OJournal` | write-only timestamped log; a proven frame law makes durability an afterthought | [`Journaling.v`](examples/Journaling.v) |
+| Effect | Ops | One line | Tower | Gallery |
+|---|---|---|---|---|
+| **Keyed store** | `OGet` · `OPut` · `ODelete` | bytes-keyed state; per-key frame clauses | kernel | [`KeyedStore.v`](examples/KeyedStore.v) |
+| **Expiry** | `OSetDeadline` · `OGetDeadline` | per-binding TTLs; live iff `now ≤ deadline` — expired = absent | **derived** ([`Elab.v`](theories/Elab.v)) | [`Expiry.v`](examples/Expiry.v) |
+| **Time** | `ONow` | one injected instant per run: deterministic by construction, replayable | kernel | [`Clock.v`](examples/Clock.v) |
+| **Errors** | `OThrow` | aborting exceptions with *structured* payloads; pre-throw effects commit | kernel | [`Throw.v`](examples/Throw.v) |
+| **Environment** | `OAsk` | the Reader: immutable request/config context | kernel | [`Ask.v`](examples/Ask.v) |
+| **Trace** | `OTrace` | the Writer: provable, ordered, structured logging | kernel | [`Tracing.v`](examples/Tracing.v) |
+| **Cache** | `OCacheGet` · `OCachePut` | a memo table invisible to the observable — "only an optimization" is structural | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Memo.v`](examples/Memo.v) |
+| **Journal** | `OJournal` | write-only timestamped log; a proven frame law makes durability an afterthought | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Journaling.v`](examples/Journaling.v) |
+
+**Effect towers.** The *derived* families are not irreducible trust: each has a proven
+*elaboration* into programs over the five kernel families (plain never-expiring store, clock,
+errors, environment, trace) with a machine-checked refinement theorem per layer
+(`Elab.elab_simulates`, `ElabNs.elab_ns_simulates` — axiom-free, no side conditions). A build can
+therefore run in **mode K**: the elaborated programs against kernel realizers only — no deadline
+logic, no cache realizer, no journal realizer in the trusted runtime — and CI differentially tests
+that configuration on every commit (`diff_store_k`, `diff_cache_k`, `diff_journal_k`). The fused
+realizers remain the *mode-F* production default as performance options — trusted and adversarially
+tested, never load-bearing for the semantics. Every trusted entry's status — `kernel-v1` or
+`derived(<theorem>)` — is recorded in the [runtime manifest](docs/runtime_manifest.toml) and
+surfaced in the generated [TCB report](docs/tcb_report.md).
 
 The glue between the effects — general `Match` over tagged values, the bounded `Repeat` loop, the
 `Fold` list eliminator, and 16 total *checked* primitives (overflow and parse failure yield an option,
