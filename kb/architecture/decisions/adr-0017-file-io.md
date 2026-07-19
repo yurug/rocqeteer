@@ -1,7 +1,7 @@
 ---
 id: adr-0017-file-io
 type: decision
-summary: PROPOSED (C3, user review pending — no realizer lands before approval) — the first genuinely low-level effect family, byte-stream file I/O — 4 kernel ops (OOpen, ORead, OFWrite, OClose) over a pure in-world file system (path→bytes map + descriptor table); EOF is the empty chunk; modeled errors (existence) are tagged VALUES, unmodeled environmental errors abort via OThrow with a tagged payload; process context (argv/env/stdio) reuses OAsk and pre-opened descriptors, adding ZERO ops; realizer over Unix.read/write with a full-read loop contract; differentially tested against coreutils.
+summary: PROPOSED (C3, user review pending — no realizer lands before approval) — the first genuinely low-level effect family, byte-stream file I/O — 4 kernel ops (OOpen, ORead, OFWrite, OClose) over a pure in-world file system (path→bytes map + descriptor table); EOF is the empty chunk; modeled errors (existence) are tagged VALUES, unmodeled environmental errors abort via OThrow with a tagged payload; process context (argv/env/stdio) reuses OAsk and pre-opened descriptors, adding ZERO ops; realizer over Unix.read/write with a full-read loop contract; differentially tested against coreutils. Reasoning model: sequential snapshot semantics with wp points-to assertions and a generic chunking-invariance principle; OS compatibility = a CONDITIONAL refinement under three named environmental assumptions (Runtime_FS_snapshot, Runtime_FS_paths_opaque, Runtime_FileRead/Write_full).
 domain: architecture
 last-updated: 2026-07-19
 depends-on: [effir, adr-0004-trust-model, adr-0010-structured-values, adr-0016-effect-towers]
@@ -74,6 +74,38 @@ level — while opening the *future* option of deriving today's Store kernel ove
 6. **Sizing guard.** v1 fragment = exactly these 4 ops + 2 modes. No seek, no stat, no directories,
    no append, no pipes: each waits for an application that forces it (the adr-0006 discipline that
    kept the store honest).
+
+## Reasoning model (added 2026-07-19 — the review question: what do we reason with, and how is it compatible with the OS?)
+Two layers — what the proofs use, and the exact seam with the kernel:
+1. **Proof level: a sequential snapshot semantics.** The same treatment the store got — linearized,
+   single-agent, deterministic; program order IS file-state order. The R14 wp layer ([[adr-0015-program-logic]])
+   extends with points-to assertions over the new region — `path ↦ bytes` and `fd ↦ (path, off, mode)` —
+   per-op rules, and frame laws (reading fd1 does not move fd2's offset; writing one path leaves every
+   other points-to intact). THE derived principle is **chunking invariance**: for any `maxlen >= 1`,
+   folding over successive `ORead` chunks ≡ folding over the file's contents — proven once, generically;
+   buffer size becomes a provably unobservable implementation choice, and the wc-core theorem is an
+   instance. (Empty-chunk EOF exists to make this lemma clean: the chunk stream is a deterministic
+   function of contents and offset, no sentinel case analysis.)
+2. **OS seam: a CONDITIONAL refinement with three NAMED environmental assumptions** (manifest entries,
+   the adr-0004 pattern — the file-flavored analogs of `Runtime_SingleTimeSource_refines`):
+   - `Runtime_FS_snapshot` — no external process mutates the opened files during a run. POSIX offers
+     no isolation, so this is neither provable nor generally testable: documented trust, and the
+     assumption doing the most work.
+   - `Runtime_FS_paths_opaque` — paths are opaque tokens; distinct tokens denote distinct files. The
+     model's map keys cannot see symlinks, hardlinks, or normalization ("./a" vs "a"): an aliased pair
+     is two model files but one OS file, so runs using aliases are OUTSIDE the model. Named, not
+     defended.
+   - `Runtime_FileRead_full` / `Runtime_FileWrite_full` — the realizer loops discharge POSIX short
+     reads/writes and EINTR; this is the ENGINEERED half of compatibility (it makes the deterministic
+     chunks realizable) and the TESTABLE half (fault injection with interposed short-read sources
+     exercises exactly the loop paths).
+   Under the first two assumptions the refinement needs remarkably little POSIX: sequential consistency
+   of a single-threaded process's OWN I/O — which POSIX grants — and NO atomicity guarantees at all
+   (fortunate, since POSIX barely gives any for regular files). Visibility vs durability splits as in
+   adr-0013: writes are immediately visible in-model and issued unbuffered by the realizer; durability
+   and crash states are unmodeled — crash-Hoare reasoning (FSCQ-style) is a research extension, not a
+   v1 increment. The compatibility claim is validated against the ACTUAL host kernel (realizer vs
+   reference through real temp files + the coreutils differentials), not against a POSIX abstraction.
 
 ## Consequences
 - (+) The first family whose ops *cannot* be suspected of being application-sugar — the tower's
