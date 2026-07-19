@@ -40,7 +40,9 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 ## Map of the KB
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
-- `architecture/overview.md` + `decisions/` (16 ADRs) — pipeline, TCB layers, and the decisions behind them.
+- `architecture/INDEX.md` — overview, `decisions/` (16 ADRs), and `architecture/tower-rationale.md`
+  (why towers matter though mode F is byte-identical — the assurance-dial / evidence / TCB-growth /
+  credibility arguments): pipeline, TCB layers, and the decisions behind them.
 - `spec/` (8 + index) — EffIR, effect signatures, reference semantics, **program-logic** (the R14 shallow wp layer), codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
 - `properties/` (3 + index) — functional (proven, P1–P8), non-functional (measured, NF1–NF6), edge cases (T1–T10).
 - `external/` (`external/INDEX.md`) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
@@ -52,7 +54,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 - `questions-round1.md` — Phase-1 ambiguity resolution (answered: defaults accepted, NF = measure).
 
 ## File count
-51 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
+52 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
 `reports/` (premortem `.md`/`.html`, KB quiz, audits).
 
 ## Agent notes

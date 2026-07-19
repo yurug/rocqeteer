@@ -26,7 +26,9 @@ Each step follows the house pattern: ADR first (where marked), delegated impleme
 `make all`, trust-diff review, commit, session-state checkpoint. Complete a step fully before the next
 (CLAUDE.md workflow).
 
-## C1 — Tower mechanism + Expiry elaboration (flagship)
+## C1 — Tower mechanism + Expiry elaboration (flagship) — ✅ DONE 2026-07-19, commit 3f34a1f
+Delivered exactly as scoped; theorem `elab_simulates` needed NO wf side condition and NO wp fallback
+(the M.Equal relation approach held). `diff_store_k` green first run (3000×5, boundary asserted).
 ADR-0016 §2–3: `elab` infrastructure, `elab_expiry`, projection `π`, the refinement theorem
 (`observe`-level, for wf programs, every `now`), `wf p -> wf (elab p)`, anti-vacuity mutants (`<`
 liveness at the elaborated level), mode-K codegen path (extracted `elab` composed before emission),
@@ -40,14 +42,18 @@ liveness at the elaborated level), mode-K codegen path (extracted `elab` compose
 - **DoD:** theorem axiom-free with mutants + inhabitance; `make all` green with mode-K `diff_store`
   (coverage assertions unchanged); Store manifest entry's expiry aspect flips to `derived(<theorem>)`.
 
-## C2 — Cache (null elaboration) + Journal (reserved namespace) + the discharge column
-`elab_cache` justified by `cache_invisible`; `elab_journal` over a reserved kernel key with the
-adr-0014 namespace wf extension; manifest schema + `tcb_report` generator gain the `discharge` field
-with a CI check that named discharge theorems exist and are axiom-free; README "The effects" table gains
-the kernel/derived column and the claim wording of adr-0016 §5.
-- **DoD:** all 5 derived ops `derived(<theorem>)`, kernel = 7 ops in the TCB report; mode-K runs of
-  `diff_cache`/`diff_journal` green; README updated. **This is the pre-redoq-announcement item** — it
-  converts the review's critique into a theorem-backed feature before the repo gets outside scrutiny.
+## C2 — Cache + Journal consolidation layer + the discharge column (CORRECTED design, adr-0016 §Corrections)
+The null cache elaboration is unsound (put-then-get distinguishes) and a syntactic namespace check
+cannot bound runtime-computed keys — so C2 builds ONE consolidation layer `elab_ns` below Expiry:
+store keys escaped `"u"++k`, cache faithfully store-backed at `"c"++k`, journal a chronological DList
+at `"j"` — total injective escaping, unconditional theorem, adr-0014 untouched. Mode K becomes the
+COMPOSITION `elab_expiry ∘ elab_ns`: one artifact over kernel realizers only (no cache.ml, no
+journal.ml). Manifest `discharge` field on every effect entry + CI check that named discharge theorems
+exist; README "The effects" gains the kernel/derived column and the adr-0016 §5 claim wording.
+- **DoD:** all derived surfaces `derived(<theorem>)`, kernel = {Store_kernel, Time, Throw, Ask, Trace}
+  in the TCB report; mode-K runs of the cache/journal suites green over the composed artifact; README
+  updated. **This is the pre-redoq-announcement item** — it converts the review's critique into a
+  theorem-backed feature before the repo gets outside scrutiny.
 
 ## C3 — Application 2: a Unix file tool (first genuinely low-level family)
 A wc/head/grep-subset utility, chosen because it forces effects nothing current provides:

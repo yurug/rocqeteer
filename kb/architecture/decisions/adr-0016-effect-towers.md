@@ -6,7 +6,7 @@ domain: architecture
 last-updated: 2026-07-19
 depends-on: [effir, adr-0001-first-order-ast, adr-0004-trust-model, adr-0011-time-and-expiring-store, adr-0013-journal-effect]
 refines: []
-related: [adr-0014-wf-checker, runtime-manifest, plan-towers, slice1-status]
+related: [adr-0014-wf-checker, runtime-manifest, plan-towers, slice1-status, tower-rationale]
 ---
 # ADR-0016 — Effect towers: kernel/derived split, proven elaborations, dischargeable trust
 
@@ -40,14 +40,12 @@ tower is the planned correction *after* that bet paid off, not a reversal of it.
      the pair, compare `ONow` to `d` via `PCmpInt` (liveness `now <= d`, the adr-0011 boundary); `OPut`
      stores `DPair v DNone` (put clears the deadline); `OSetDeadline` = get-then-repack; lazy expiry
      (dead entries physically present in the kernel store) mirrors the runtime and is absorbed by `π`.
-   - **Cache**: the **null elaboration** — `OCacheGet ↦ Ret DNone` (miss), `OCachePut ↦ Ret DUnit`. Its
-     correctness *is* the already-proven `cache_invisible` (hit ≡ miss). This makes explicit what Cache
-     always was: a performance effect whose entire spec is invisibility; `runtime/cache.ml` becomes a
-     performance option, not a semantic necessity.
-   - **Journal**: append to a **reserved kernel key** (`PListSnoc` on a `DList` at a namespaced bytes key
-     carrying `DPair (DInt now) payload`). Requires a namespace guarantee: the wf checker (adr-0014) gains
-     a **reserved-key-namespace check** (programs may not mention reserved-prefix keys); the refinement
-     theorem is stated for namespace-wf programs.
+   - **Cache** *(corrected — see §Corrections)*: a **faithful store-backed elaboration** — cache entries
+     live in the store under escaped keys; `runtime/cache.ml` becomes a performance option because the
+     elaboration implements the same semantics over the kernel, not because cache reads are droppable.
+   - **Journal** *(corrected — see §Corrections)*: append to an **escaped kernel key** (`PListSnoc` on a
+     chronological `DList` of `DPair (DInt now) payload` at the journal key). No wf extension: key
+     escaping (below) makes collision structurally impossible.
 4. **Two execution modes, both differentially tested.** **Mode F** (fused — today's realizers, the
    production default; fast). **Mode K** (kernel-only): the pipeline runs `elab p` (elaboration happens in
    Rocq and is extracted, so codegen sees an ordinary kernel term), against a runtime containing **kernel
@@ -86,5 +84,23 @@ tower is the planned correction *after* that bet paid off, not a reversal of it.
   kernel-runtime); coverage assertions unchanged. The freshness gate covers the extracted `elab_X`.
 - Elaborated programs must pass the wf checker (adr-0014) by *construction* — state and prove
   `wf p -> wf (elab_X p)`; codegen's wf gate then needs no special case.
-- Reserved namespace: one prefix constant, defined once in `theories/`, surfaced in the manifest; the wf
-  extension rejects programs mentioning it (fail-loud, like scope errors).
+- Key escaping: the prefix constants are defined once in `theories/`, surfaced in the manifest; the
+  observable projection strips them (untrusted harness code, like the expiry unpacking).
+
+## Corrections (C2 design, 2026-07-19)
+Two §3 decisions did not survive proof-design contact; recorded here per the house rule that ADRs match
+what is provable, not what was hoped:
+1. **The Cache null elaboration is UNSOUND for arbitrary programs.** `OCachePut k v; OCacheGet k` returns
+   `DSome v` at the source but `DNone` under the null elaboration — outcome inequality from the empty
+   cache. `cache_invisible` (hit ≡ miss) is a statement about coherent *use*, which EffIR does not
+   enforce; an unconditional tower theorem therefore needs the **faithful** store-backed elaboration.
+   The "cache is a performance effect" narrative survives at the REALIZER level, not the semantic one.
+2. **The reserved-namespace wf extension cannot work syntactically.** Store keys are runtime values
+   (env-supplied, computed via bytes prims); no syntactic checker can bound them, so a reserved-namespace
+   side condition would be semantic, per-program, and unconditionality would be lost. Replaced by **total
+   injective key ESCAPING inside the elaboration**: user store keys ↦ `"u" ++ k`, cache keys ↦ `"c" ++ k`,
+   the journal ↦ `"j"` — first-byte discrimination partitions the kernel key space, collisions are
+   structurally impossible, the theorem stays unconditional, and adr-0014 is untouched.
+3. Consequently Cache and Journal (plus the escaping of the five store ops) form **one consolidation
+   layer** `elab_ns` *below* the Expiry layer: mode K runs `elab_expiry ∘ elab_ns`, one artifact over the
+   kernel realizer set {Store_kernel, Time, Throw, Ask, Trace} — no cache realizer, no journal realizer.
