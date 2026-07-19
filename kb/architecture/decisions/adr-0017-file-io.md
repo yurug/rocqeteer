@@ -1,7 +1,7 @@
 ---
 id: adr-0017-file-io
 type: decision
-summary: PROPOSED (C3, user review pending — no realizer lands before approval) — the first genuinely low-level effect family, byte-stream file I/O — 4 kernel ops (OOpen, ORead, OFWrite, OClose) over a pure in-world file system (path→bytes map + descriptor table); EOF is the empty chunk; modeled errors (existence) are tagged VALUES, unmodeled environmental errors abort via OThrow with a tagged payload; process context (argv/env/stdio) reuses OAsk and pre-opened descriptors, adding ZERO ops; realizer over Unix.read/write with a full-read loop contract; differentially tested against coreutils. Reasoning model: sequential snapshot semantics with wp points-to assertions and a generic chunking-invariance principle; OS compatibility = a CONDITIONAL refinement under three named environmental assumptions (Runtime_FS_snapshot, Runtime_FS_paths_opaque, Runtime_FileRead/Write_full).
+summary: PROPOSED (C3, user review pending — no realizer lands before approval) — the first genuinely low-level effect family, byte-stream file I/O — 4 kernel ops (OOpen, ORead, OFWrite, OClose) over a pure in-world file system (path→bytes map + descriptor table); EOF is the empty chunk; modeled errors (existence) are tagged VALUES, unmodeled environmental errors abort via OThrow with a tagged payload; process context (argv/env/stdio) reuses OAsk and pre-opened descriptors, adding ZERO ops; realizer over Unix.read/write with a full-read loop contract; differentially tested against coreutils. Reasoning model: sequential snapshot semantics with wp points-to assertions and a generic chunking-invariance principle; OS compatibility = a CONDITIONAL refinement with inode pinning structural (paths only at OOpen; symlinks followed at open like cat/wc), Runtime_FS_distinct_inodes CHECKED at runtime (cp-style dev/ino same-file refusal), Runtime_FS_open_inode_stable narrowed to held-open contents (+ best-effort fstat change detection), and Runtime_FileRead/Write_full loop contracts.
 domain: architecture
 last-updated: 2026-07-19
 depends-on: [effir, adr-0004-trust-model, adr-0010-structured-values, adr-0016-effect-towers]
@@ -86,26 +86,41 @@ Two layers — what the proofs use, and the exact seam with the kernel:
    buffer size becomes a provably unobservable implementation choice, and the wc-core theorem is an
    instance. (Empty-chunk EOF exists to make this lemma clean: the chunk stream is a deterministic
    function of contents and offset, no sentinel case analysis.)
-2. **OS seam: a CONDITIONAL refinement with three NAMED environmental assumptions** (manifest entries,
-   the adr-0004 pattern — the file-flavored analogs of `Runtime_SingleTimeSource_refines`):
-   - `Runtime_FS_snapshot` — no external process mutates the opened files during a run. POSIX offers
-     no isolation, so this is neither provable nor generally testable: documented trust, and the
-     assumption doing the most work.
-   - `Runtime_FS_paths_opaque` — paths are opaque tokens; distinct tokens denote distinct files. The
-     model's map keys cannot see symlinks, hardlinks, or normalization ("./a" vs "a"): an aliased pair
-     is two model files but one OS file, so runs using aliases are OUTSIDE the model. Named, not
-     defended.
+2. **OS seam: a CONDITIONAL refinement — narrowed and partly runtime-CHECKED assumptions**
+   (manifest entries, the adr-0004 pattern; REFINED 2026-07-19 after review — the original blanket
+   forms were oversimplified: realistic file processors handle symlinks, and the TOCTOU/CWE-367
+   literature shows which strictness is actually achievable):
+   - **Inode pinning is structural.** Paths appear ONLY in [OOpen]; every other op is fd-based — the
+     model IS the open-early/operate-on-descriptors discipline real hardened tools use (the openat
+     family lesson). The realizer FOLLOWS symlinks at open, exactly like cat/wc on their operands
+     (no O_NOFOLLOW for a file tool; resolution confinement à la openat2/RESOLVE_* is container
+     territory, out of scope), and from then on the fd pins the inode: renames, unlinks, and
+     path-binding churn during the run are IRRELEVANT to the model, for free, by POSIX fd semantics.
+   - `Runtime_FS_distinct_inodes` (CHECKED, replaces the blanket paths-opaque assumption) — the
+     cross-path frame law needs only: distinct opened tokens denote distinct inodes. The realizer
+     enforces it the way cp refuses "'a' and 'b' are the same file": fstat each opened fd, compare
+     (st_dev, st_ino) against the open set, ABORT with a tagged environmental error on aliasing.
+     An assumption for the theorem, a checked precondition at runtime.
+   - `Runtime_FS_open_inode_stable` (narrowed from the blanket snapshot assumption) — the CONTENTS
+     of inodes held open are not externally written during the run. This is the residue POSIX gives
+     no mechanism against (no mandatory locking; advisory locks bind only cooperating processes —
+     the SQLite/flock world) — the same assumption cat/wc/sort/compilers silently make; we NAME it,
+     and the realizer offers best-effort DETECTION (fstat size/mtime before and after, tagged
+     environmental abort on change — the rsync/editor posture: detection, not prevention,
+     invariant-3 wording).
    - `Runtime_FileRead_full` / `Runtime_FileWrite_full` — the realizer loops discharge POSIX short
-     reads/writes and EINTR; this is the ENGINEERED half of compatibility (it makes the deterministic
-     chunks realizable) and the TESTABLE half (fault injection with interposed short-read sources
-     exercises exactly the loop paths).
-   Under the first two assumptions the refinement needs remarkably little POSIX: sequential consistency
-   of a single-threaded process's OWN I/O — which POSIX grants — and NO atomicity guarantees at all
-   (fortunate, since POSIX barely gives any for regular files). Visibility vs durability splits as in
-   adr-0013: writes are immediately visible in-model and issued unbuffered by the realizer; durability
-   and crash states are unmodeled — crash-Hoare reasoning (FSCQ-style) is a research extension, not a
-   v1 increment. The compatibility claim is validated against the ACTUAL host kernel (realizer vs
-   reference through real temp files + the coreutils differentials), not against a POSIX abstraction.
+     reads/writes and EINTR; the ENGINEERED half of compatibility (makes the deterministic chunks
+     realizable) and the TESTABLE half (fault injection with interposed short-read sources).
+   Under these the refinement needs remarkably little POSIX: fd liveness across unlink/rename plus
+   sequential consistency of a single-threaded process's OWN I/O — both granted — and NO atomicity
+   guarantees at all (fortunate, since POSIX barely gives any for regular files). The write side can
+   additionally publish atomically (temp + rename, the sed -i pattern) as a WRAPPER convention so
+   external readers also see snapshots — a consumer choice, not an IR concern. Visibility vs
+   durability splits as in adr-0013: writes are immediately visible in-model and issued unbuffered;
+   durability and crash states are unmodeled — crash-Hoare reasoning (FSCQ-style) is a research
+   extension, not a v1 increment. The compatibility claim is validated against the ACTUAL host
+   kernel (realizer vs reference through real temp files + the coreutils differentials), not against
+   a POSIX abstraction.
 
 ## Consequences
 - (+) The first family whose ops *cannot* be suspected of being application-sugar — the tower's
@@ -116,8 +131,10 @@ Two layers — what the proofs use, and the exact seam with the kernel:
   in the manifest and in every consumer claim (Decision 3's wording is mandatory).
 - (−) The full-read/full-write loop contracts are new trusted code paths; they get dedicated fault
   tests, not just happy-path differentials.
-- (−) A single-process model: concurrent external mutation of the same files is out of scope until
-  C5 (documented, not defended).
+- (−) A single-process model for CONTENT: concurrent external writes to held-open inodes remain a
+  named assumption (POSIX offers no read isolation — the same silent assumption cat/wc/sort make,
+  here named, detected best-effort, and stated in consumer claims). Path races, by contrast, are
+  closed structurally (fd pinning) or by runtime check (dev/ino aliasing refusal).
 
 ## What this means for implementers (post-approval)
 - Anti-vacuity: a proven wc-core theorem (counts = a fold over the byte stream) with a
