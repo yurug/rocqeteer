@@ -3,7 +3,7 @@ id: glossary
 type: glossary
 summary: Canonical names and one-line definitions for every Rocqeteer domain term; the controlled vocabulary for KB tags.
 domain: meta
-last-updated: 2026-07-08
+last-updated: 2026-07-19
 depends-on: []
 refines: []
 related: [index, prd, arch-overview]
@@ -37,6 +37,11 @@ Canonical vocabulary. Every KB file's `tags` and prose draw from these terms; us
 - **KV effect** — the first effect family: `Get`/`Put`/`Delete` over an abstract key/value map. The slice-1 example.
 - **Codec (pilot)** — the realistic non-toy MVP target: a verified binary serialization `encode`/`decode` with a proven round-trip. See [[prd]].
 - **Mode A / Mode B** — A = deep first-order DSL with notation (v1). B = recognized monadic Gallina lowered via MetaRocq (deferred). See [[adr-0001-first-order-ast]].
+- **Effect tower** — the layering discipline: a **derived** effect is given a proven **elaboration** into programs over lower (**kernel**) effects, with a per-layer refinement theorem. Towers are theorems about programs; the IR gains no constructs. See [[adr-0016-effect-towers]].
+- **Kernel / derived effect** — kernel = an op family whose realizer is irreducibly trusted at the current level (v1: plain Store, Now, Throw, Ask, Trace); derived = an op family discharged by an elaboration theorem (v1: Expiry, Cache, Journal). See [[adr-0016-effect-towers]].
+- **Elaboration (`elab_X`)** — a total Rocq function `tm -> tm` macro-expanding a derived family's ops into kernel fragments; extracted, so mode K composes it before codegen. See [[adr-0016-effect-towers]].
+- **Mode F / Mode K** — F = fused execution with the full realizer set (production default); K = kernel-only execution of the elaborated program against kernel realizers only. Both differentially tested in CI. See [[adr-0016-effect-towers]].
+- **Discharge path** — the manifest/TCB-report field stating how a trusted entry could stop being trusted: `kernel-v1` (needs a future lower kernel) or `derived(<theorem>)` (already proven; the realizer is a performance option). See [[adr-0016-effect-towers]].
 
 ## Agent notes
 > When a term here gains a dedicated file, link it with a wiki-style double-bracket reference to that file's id. Treat `EffIR`, `realizer`, `refinement axiom`, and `differential testing` as load-bearing — most design decisions reduce to them.

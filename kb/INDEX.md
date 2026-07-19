@@ -3,7 +3,7 @@ id: index
 type: index
 summary: Top-level routing for the Rocqeteer knowledge base — what the project is, how to read the KB, and quick-load bundles by goal.
 domain: meta
-last-updated: 2026-07-13
+last-updated: 2026-07-19
 depends-on: []
 refines: []
 related: [glossary, prd, arch-overview, idx-by-task]
@@ -22,7 +22,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
   `architecture/decisions/INDEX.md` → `spec/INDEX.md` → `properties/INDEX.md`.
 - **Have a task?** Go straight to `indexes/by-task.md` — it routes you to the ordered file set per task.
 - **Wondering why?** Each ADR cites the premortem failure it defends against (`reports/premortem-idea-20260620.md`).
-- Files are atomic and self-sufficient; titles are claims; links are glossed. Read the few you need, not all 34.
+- Files are atomic and self-sufficient; titles are claims; links are glossed. Read the few you need, not all of them.
 
 ## Quick-load bundles (goal → ordered files)
 | Goal | Load |
@@ -40,19 +40,20 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 ## Map of the KB
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
-- `architecture/overview.md` + `decisions/` (6 ADRs) — pipeline, TCB layers, and the decisions behind them.
+- `architecture/overview.md` + `decisions/` (16 ADRs) — pipeline, TCB layers, and the decisions behind them.
 - `spec/` (8 + index) — EffIR, effect signatures, reference semantics, **program-logic** (the R14 shallow wp layer), codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
 - `properties/` (3 + index) — functional (proven, P1–P8), non-functional (measured, NF1–NF6), edge cases (T1–T10).
 - `external/` (`external/INDEX.md`) — Rocq extraction, OCaml 5 effects, QCheck, zarith (the entire v1 dependency budget).
 - `conventions/` (`conventions/INDEX.md`) — code style, error handling, testing & proof hygiene.
 - `runbooks/` (`runbooks/INDEX.md`) — build/validate pipeline, quality-audit checklist.
 - `indexes/by-task.md` — task-oriented routing.
+- `plan.md` (KV slice, done) · `plan-towers.md` (**phase C**: effect towers + application diversity — the current roadmap).
 - `reports/` — `premortem-idea-20260620.{md,html}`; future audit/quiz reports.
 - `questions-round1.md` — Phase-1 ambiguity resolution (answered: defaults accepted, NF = measure).
 
 ## File count
-34 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
-`reports/` (premortem `.md`/`.html`, KB quiz, future audits).
+51 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
+`reports/` (premortem `.md`/`.html`, KB quiz, audits).
 
 ## Agent notes
 > If code and a `spec/`/`properties/` file disagree, that is a finding — fix one, in the same change, and

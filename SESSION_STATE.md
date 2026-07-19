@@ -164,3 +164,30 @@ effects" table (12 ops / 8 families -> gallery links), status refreshed to IR v2
 consumer redoq, roadmap done-items corrected (Match/VPrim/Wf/Journal/Logic), license section fixed
 MIT->BSD-3. make all green incl. gallery; pushed 3edfc70. Theorem count verified 413 (theories) + 27
 (examples).
+
+## 2026-07-19 — Phase C direction set: effect towers + application diversity (user design review)
+User reviewed rocqeteer+redoq (voice memo, distilled into the ADR/plan; raw feedback.md left UNTRACKED
+on purpose — personal memo, repo is public). Critiques: op set reads chosen-for-redoq (deadlines/cache/
+journal are Redis features as primitives, contradicts domain-independence); TCB wide with no descent
+path; low-level effect families missing; app diversity needed. Agreed resolution (user: "Let's do
+this"): no vacuum redesign of primitives — instead the tower discipline. Artifacts committed:
+- **ADR-0016 effect towers**: 7-op kernel (plain Store/Now/Throw/Ask/Trace) vs 5 derived ops
+  (Expiry/Cache/Journal) discharged by total Rocq elaborations `elab_X : tm -> tm` + per-layer
+  observational refinement theorems (no IR changes — invariant 1 intact); mode K (kernel-only
+  execution of elaborated programs, CI-tested) beside mode F (fused, production); manifest/TCB report
+  gain a `discharge` field per entry. Cache's elaboration is the NULL one (justified by the proven
+  cache_invisible); Journal needs a reserved-key namespace wf extension (adr-0014).
+- **kb/plan-towers.md** (phase-C roadmap): C1 tower mechanism + Expiry elaboration (flagship, hardest:
+  lazy-expiry simulation through observe; wp-layer fallback authorized) → C2 Cache/Journal elabs +
+  discharge column + README (the PRE-redoq-ANNOUNCEMENT item) → C3 Unix file tool (byte-stream fd I/O
+  family, ADR-0017, differential vs coreutils) → C4 sequential HTTP server (sockets family) → C5
+  concurrency (USER-FLAGGED priority; constraints fixed now: one-shot only, deterministic reference
+  via schedule oracle in world, cooperative fibers+channels, recorded-schedule replay for diff tests;
+  sequenced last because blocking ops from C3/C4 are the yield points). Compiler app REJECTED (user:
+  purely functional compiler = CompCert territory, exercises no effects). Glossary + indexes updated;
+  kb-lint 54 files 0 errors.
+
+## Exact next step (2026-07-19)
+**C1**: implement the tower mechanism + `elab_expiry` per adr-0016 §2–3 and plan-towers §C1. Direction
+approved by user 2026-07-19; house pattern applies (delegated implementation, from-clean make all,
+trust-diff review before commit).

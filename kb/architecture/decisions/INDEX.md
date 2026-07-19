@@ -1,9 +1,9 @@
 ---
 id: adr-index
 type: index
-summary: Routing table for the six architecture decision records, each tracing to a premortem failure mode it defends against.
+summary: Routing table for the architecture decision records, each tracing to the premortem failure mode or design review it defends against.
 domain: architecture
-last-updated: 2026-07-08
+last-updated: 2026-07-19
 depends-on: []
 refines: []
 related: [index, arch-overview]
@@ -27,6 +27,7 @@ related: [index, arch-overview]
 | `adr-0013-journal-effect.md` | Journal effect: OJournal appends (now_ms, dval); order + frame laws + generic run-sequence fold lemma; durability = named consumer trust | R9 design (2026-07-11) |
 | `adr-0014-wf-checker.md` | R10 v1 = PROVEN wf checker (scope+arity; kills scope-Dstuck at build time; codegen refuses non-wf); value-shape typing = open phase 2 | R10 design (2026-07-11) |
 | `adr-0015-program-logic.md` | R14 = shallow wp over run (no second semantics): rules per construct/op/prim, keyed store assertions, Repeat/Fold invariant rules, wp_* tactics — the road to forall-quantified specs and the consumer's crown-jewel replay theorem | R14 design (2026-07-13) |
+| `adr-0016-effect-towers.md` | Effect towers: 7-op kernel / 5 derived ops (Expiry, Cache, Journal) discharged by proven elaborations + refinement theorems; mode-K (kernel-only) execution in CI; manifest `discharge` field | design review 2026-07-19 ("chosen-for-redoq" + TCB-descent critiques) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing
