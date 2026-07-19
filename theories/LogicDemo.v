@@ -149,9 +149,9 @@ Qed.
 Definition demo_state : state :=
   M.add "a"%string (DInt 7, Some 1000) (M.empty entry).
 Definition demo_world : world :=
-  mkWorld demo_state DUnit 1000 [] (M.empty dval) [].
+  mkWorld demo_state DUnit 1000 [] (M.empty dval) [] (M.empty (list ascii)) [] 3.
 Definition demo_world_expired : world :=
-  mkWorld demo_state DUnit 1001 [] (M.empty dval) [].
+  mkWorld demo_state DUnit 1001 [] (M.empty dval) [] (M.empty (list ascii)) [] 3.
 Definition akey : list ascii := list_ascii_of_string "a".
 
 (** [get_general]'s hypotheses are satisfiable on BOTH sides of the boundary —

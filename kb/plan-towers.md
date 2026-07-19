@@ -61,7 +61,15 @@ exist; README "The effects" gains the kernel/derived column and the adr-0016 §5
   updated. **This is the pre-redoq-announcement item** — it converts the review's critique into a
   theorem-backed feature before the repo gets outside scrutiny.
 
-## C3 — Application 2: a Unix file tool (first genuinely low-level family)
+## C3 — Application 2: a Unix file tool — ✅ DONE 2026-07-19 (same-day as C1/C2)
+Delivered per ADR-0017 (as twice review-refined): the file family (OOpen/ORead/OFWrite/OClose) in
+EffIR with pure in-world FS; `FileIO.chunking_invariance` + `wc_prog_correct` (general, axiom-free);
+`tools/rwc` (proven core, untrusted wrapper); `diff_file` three-way vs coreutils through REAL files
+with the five seam checks (full-read interposition, EIO, aliasing refusal, symlink follow, change
+detection); manifest + TCB rows; gallery `Files.v`. Deferred within scope: `PCountByte` prim for
+line counts (wc -l); mode-K suites do not yet exercise the file samples.
+
+### (original scope, for the record)
 A wc/head/grep-subset utility, chosen because it forces effects nothing current provides:
 **byte-stream I/O** over descriptors (`OOpen`/`OReadChunk`/`OWriteChunk`/`OClose`, EOF as a value,
 chunked reads so programs handle short reads) plus process context (`OArgv`, `OExit` with code).

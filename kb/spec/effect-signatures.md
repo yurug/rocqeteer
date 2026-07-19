@@ -81,3 +81,17 @@ wrapper, so the generated `.mli`, the lowering, and the handler's `continue` typ
 - `external/ocaml5-effects.md` — one-shot continuations, deep handlers, `Effect.Unhandled`, `match…with effect`.
 - `spec/reference-semantics.md` — the pure Rocq handler for KV used in proofs/tests.
 </content>
+
+## The file family (C3, adr-0017-file-io — added 2026-07-19)
+| Op | Args | Result | Notes |
+|----|------|--------|-------|
+| `OOpen` | `[path : DBytes; mode : DInt 0 or 1]` | `DTag 0 (DInt fd)` or `DTag 1 (DInt 2)` (ENOENT value, read mode) | paths resolved ONLY here (inode pinning structural); mode 1 = write-truncate |
+| `ORead` | `[fd : DInt; maxlen : DInt >= 1]` | `DBytes chunk` (EMPTY = EOF) or `DTag 1 (DInt 9)` (EBADF value) | deterministic chunk = `file_chunk` (firstn/skipn); `maxlen <= 0` is Dstuck |
+| `OFWrite` | `[fd : DInt; bytes : DBytes]` | `DUnit` or `DTag 1 (DInt 9)` | appends; short writes do not exist at the IR level |
+| `OClose` | `[fd : DInt]` | `DBool` | double-close = false (the ODelete shape) |
+
+World regions: `files : M.t (list ascii)` (path -> contents), `fds : fdtab`, `next_fd : Z`.
+Modeled failures are tagged VALUES; environmental failures live in the realizer
+(`Rkv.Fileio`) behind the named assumptions `Runtime_FS_distinct_inodes` (runtime-checked),
+`Runtime_FS_open_inode_stable` (detection), `Runtime_FileRead_full`/`Runtime_FileWrite_full`.
+Flagship theorems: `FileIO.chunking_invariance`, `FileIO.wc_prog_correct`.

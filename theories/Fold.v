@@ -497,7 +497,7 @@ Definition collect_expected : dval :=
   DList [DTag 1 cv1; DTag 0 DUnit; DTag 1 cv3].
 
 Definition collect_world : world :=
-  mkWorld collect_store collect_argv 0 [] (M.empty dval) [].
+  mkWorld collect_store collect_argv 0 [] (M.empty dval) [] (M.empty (list ascii)) [] 3.
 
 (** THE load-bearing end-to-end theorem: the reply is exactly [collect_expected] —
     order preserved, the tagged nil in the k2 slot — the store observable keeps only
@@ -512,14 +512,14 @@ Proof. vm_compute. reflexivity. Qed.
 (** Empty argv: the reply is the init accumulator — the empty DList (F1 posture). *)
 Theorem fold_collect_empty_argv :
   fst (run [] sample_fold_collect
-         (mkWorld collect_store (DList []) 0 [] (M.empty dval) []))
+         (mkWorld collect_store (DList []) 0 [] (M.empty dval) [] (M.empty (list ascii)) [] 3))
   = ORet (DList []).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Non-DList argv: the fold is empty (adr-0012 §Decision 2) — still the empty DList. *)
 Theorem fold_collect_non_list_argv :
   fst (run [] sample_fold_collect
-         (mkWorld collect_store (DInt 9) 0 [] (M.empty dval) []))
+         (mkWorld collect_store (DInt 9) 0 [] (M.empty dval) [] (M.empty (list ascii)) [] 3))
   = ORet (DList []).
 Proof. vm_compute. reflexivity. Qed.
 

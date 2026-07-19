@@ -16,4 +16,5 @@ Separate Extraction
   Elab.elab Elab.elab_programs
   ElabNs.elab_ns ElabNs.elab_full ElabNs.elab_full_programs
   EffIR.prog0 EffIR.observe EffIR.observe_full EffIR.run
+  EffIR.run_file EffIR.observe_file
   Wf.wf_tm Wf.wf_val Wf.op_arity Wf.prim_arity Wf.pat_binders.

@@ -144,6 +144,12 @@ let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   | OCacheGet, [k]   -> Printf.sprintf "(Cache.get %s)" (emit_key env k)
   | OCachePut, [k;v] -> Printf.sprintf "(Cache.put %s %s)" (emit_key env k) (emit_val env v)
   | OJournal, [v]    -> Printf.sprintf "(Journal.append %s)" (emit_val env v)
+  (* C3 (adr-0017): the file family — path through emit_key (bytes); fd/maxlen/mode/
+     payload through emit_val (the wrappers mirror handle_file's shape checks). *)
+  | OOpen,   [p; m]  -> Printf.sprintf "(Fileio.open_ %s %s)" (emit_key env p) (emit_val env m)
+  | ORead,   [f; n]  -> Printf.sprintf "(Fileio.read %s %s)" (emit_val env f) (emit_val env n)
+  | OFWrite, [f; b]  -> Printf.sprintf "(Fileio.write %s %s)" (emit_val env f) (emit_val env b)
+  | OClose,  [f]     -> Printf.sprintf "(Fileio.close_ %s)" (emit_val env f)
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
 
 (* [emit_branch] compiles one branch (adr-0008 §Decision 4 chaining scheme).

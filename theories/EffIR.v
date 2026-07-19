@@ -142,11 +142,15 @@ Inductive val : Type :=
 (** ** Effect operations: Store (Get/Put/Delete/GetDeadline/SetDeadline — the expiring
     bytes-keyed store, R4), [ONow] (Time, R5), [OThrow] (Error), [OAsk] (Env), [OTrace]
     (Trace), [OCacheGet]/[OCachePut] (Cache — a memo store kept OUT of [observe], so it
-    is observationally invisible), and [OJournal] (Journal, R9 — append-only, write-only:
-    no op reads it back) — kb/spec/effect-signatures.md, adr-0011, adr-0013. *)
+    is observationally invisible), [OJournal] (Journal, R9 — append-only, write-only:
+    no op reads it back), and the C3 FILE family (adr-0017): [OOpen]/[ORead]/[OFWrite]/
+    [OClose] — byte-stream I/O over descriptors on a pure in-world file system; paths
+    appear ONLY in [OOpen] (inode pinning is structural), EOF is the empty chunk —
+    kb/spec/effect-signatures.md, adr-0011, adr-0013, adr-0017. *)
 Inductive op : Type :=
   | OGet | OPut | ODelete | OGetDeadline | OSetDeadline | ONow
-  | OThrow | OAsk | OTrace | OCacheGet | OCachePut | OJournal.
+  | OThrow | OAsk | OTrace | OCacheGet | OCachePut | OJournal
+  | OOpen | ORead | OFWrite | OClose.
 
 (** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
     All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that
@@ -510,6 +514,38 @@ Definition entry : Type := (dval * option Z)%type.
 Definition state : Type := M.t entry.
 Definition memo  : Type := M.t dval.
 
+(** ** The file region (C3, adr-0017): a pure in-world file system.
+    [fsys] maps paths (strings, like store keys) to byte contents; [fdesc] is an open
+    descriptor — (path, (offset, mode)) with mode 0 = read, 1 = write-truncate; the
+    descriptor table is a small assoc list keyed by the fd number.  Paths are resolved
+    ONLY at [OOpen]; every other op is fd-based (inode pinning is structural). *)
+Definition fsys  : Type := M.t (list ascii).
+Definition fdesc : Type := (string * (Z * Z))%type.   (* path, (offset, mode) *)
+Definition fdtab : Type := list (Z * fdesc).
+
+Fixpoint fd_find (fd : Z) (l : fdtab) : option fdesc :=
+  match l with
+  | []            => None
+  | (n, e) :: l'  => if Z.eqb n fd then Some e else fd_find fd l'
+  end.
+
+Fixpoint fd_set (fd : Z) (e : fdesc) (l : fdtab) : fdtab :=
+  match l with
+  | []            => [(fd, e)]
+  | (n, e') :: l' => if Z.eqb n fd then (n, e) :: l' else (n, e') :: fd_set fd e l'
+  end.
+
+Fixpoint fd_remove (fd : Z) (l : fdtab) : fdtab :=
+  match l with
+  | []            => []
+  | (n, e') :: l' => if Z.eqb n fd then l' else (n, e') :: fd_remove fd l'
+  end.
+
+(** The deterministic chunk (adr-0017 §Decision 1): bytes [off .. off + maxlen) of the
+    contents, clipped at EOF — the EMPTY chunk signals EOF, no sentinel. *)
+Definition file_chunk (cs : list ascii) (off maxlen : Z) : list ascii :=
+  firstn (Z.to_nat maxlen) (skipn (Z.to_nat off) cs).
+
 Definition opt_to_dval (o : option dval) : dval :=
   match o with Some v => DSome v | None => DNone end.
 
@@ -546,16 +582,25 @@ Record world : Type := mkWorld {
   trace   : list dval;
   cache   : memo;       (* memo store; deliberately NOT exposed by [observe] *)
   journal : list (Z * dval);  (* R9 append-only log, newest-first (adr-0013) *)
+  files   : fsys;       (* C3 (adr-0017): path -> byte contents *)
+  fds     : fdtab;      (* C3: open descriptors *)
+  next_fd : Z;          (* C3: next fd number OOpen hands out *)
 }.
 
 Definition set_kv    (w : world) (m : state)     : world :=
-  mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal).
+  mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal)
+          w.(files) w.(fds) w.(next_fd).
 Definition set_trace (w : world) (l : list dval) : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache) w.(journal).
+  mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache) w.(journal)
+          w.(files) w.(fds) w.(next_fd).
 Definition set_cache (w : world) (c : memo)      : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c w.(journal).
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c w.(journal)
+          w.(files) w.(fds) w.(next_fd).
 Definition set_journal (w : world) (l : list (Z * dval)) : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) l.
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) l
+          w.(files) w.(fds) w.(next_fd).
+Definition set_io (w : world) (fl : fsys) (ft : fdtab) (nf : Z) : world :=
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal) fl ft nf.
 
 (** ** Pure store handler over the map: the reference semantics of the store operations
     (adr-0011 §Decision 2 — the op table, verbatim):
@@ -604,6 +649,56 @@ Definition handle_store (now : Z) (o : op) (args : list dval) (s : state) : dval
   | _, _ => (Dstuck, s)
   end.
 
+(** ** The pure file handler (C3, adr-0017 §Decision 1 — the op table, verbatim):
+      OOpen   [path; DInt 0] -> DTag 0 (DInt fd) | DTag 1 (DInt 2)   (read; ENOENT value)
+      OOpen   [path; DInt 1] -> DTag 0 (DInt fd)                     (write-truncate)
+      ORead   [fd; maxlen>=1] -> DBytes chunk (EMPTY = EOF) | DTag 1 (DInt 9)  (EBADF value)
+      OFWrite [fd; bytes]     -> DUnit | DTag 1 (DInt 9)
+      OClose  [fd]            -> DBool (was open; double-close = false, like ODelete)
+    Malformed args are [Dstuck] (the standing convention); wrong-mode/unknown-fd probes
+    are TAGGED VALUES (programs legitimately branch on them).  Modeled failures stop at
+    existence/badf; everything environmental lives in the realizer (adr-0017 §3). *)
+Definition handle_file (o : op) (args : list dval) (fl : fsys) (ft : fdtab) (nf : Z)
+  : dval * (fsys * fdtab * Z) :=
+  match o, args with
+  | OOpen, [DBytes pb; DInt mode] =>
+      let p := string_of_list_ascii pb in
+      if Z.eqb mode 0 then
+        match M.find p fl with
+        | Some _ => (DTag 0 (DInt nf), (fl, fd_set nf (p, (0, 0)) ft, Z.succ nf))
+        | None   => (DTag 1 (DInt 2), (fl, ft, nf))
+        end
+      else if Z.eqb mode 1 then
+        (DTag 0 (DInt nf), (M.add p [] fl, fd_set nf (p, (0, 1)) ft, Z.succ nf))
+      else (Dstuck, (fl, ft, nf))
+  | ORead, [DInt fd; DInt maxlen] =>
+      if Z.leb maxlen 0 then (Dstuck, (fl, ft, nf))
+      else
+        match fd_find fd ft with
+        | Some (p, (off, 0)) =>
+            let cs := match M.find p fl with Some cs => cs | None => [] end in
+            let chunk := file_chunk cs off maxlen in
+            (DBytes chunk,
+             (fl, fd_set fd (p, (off + Z.of_nat (List.length chunk), 0)) ft, nf))
+        | _ => (DTag 1 (DInt 9), (fl, ft, nf))
+        end
+  | OFWrite, [DInt fd; DBytes bs] =>
+      match fd_find fd ft with
+      | Some (p, (off, 1)) =>
+          let cs := match M.find p fl with Some cs => cs | None => [] end in
+          (DUnit,
+           (M.add p (cs ++ bs) fl,
+            fd_set fd (p, (off + Z.of_nat (List.length bs), 1)) ft, nf))
+      | _ => (DTag 1 (DInt 9), (fl, ft, nf))
+      end
+  | OClose, [DInt fd] =>
+      match fd_find fd ft with
+      | Some _ => (DBool true, (fl, fd_remove fd ft, nf))
+      | None   => (DBool false, (fl, ft, nf))
+      end
+  | _, _ => (Dstuck, (fl, ft, nf))
+  end.
+
 (** ** The reference interpreter, threading one [world]. Structurally recursive on [t],
     hence total. [Bind] short-circuits on abort ([OErr]); [OThrow e] aborts; [OAsk] reads
     [ctx]; [OTrace v] appends [v] to the log; KV ops update [kv]. *)
@@ -641,6 +736,10 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
                         (ORet DUnit, set_journal w ((w.(now_ms), v) :: w.(journal)))
                     | _   => (ORet Dstuck, w)
                     end
+      | OOpen | ORead | OFWrite | OClose =>
+          (* C3 (adr-0017): the file region *)
+          let '(r, (fl', ft', nf')) := handle_file o vs w.(files) w.(fds) w.(next_fd) in
+          (ORet r, set_io w fl' ft' nf')
       | _      => let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in (ORet r, set_kv w s')
       end
   | Match scrut branches default =>
@@ -709,7 +808,7 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
 (** Initial world: empty store, the given [c] context, the run's instant [now], empty
     trace, empty cache, empty journal. *)
 Definition init_world (c : dval) (now : Z) : world :=
-  mkWorld (M.empty entry) c now [] (M.empty dval) [].
+  mkWorld (M.empty entry) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3.
 
 Definition run_top (c : dval) (now : Z) (t : tm) : outcome * world :=
   run [] t (init_world c now).
@@ -731,8 +830,19 @@ Definition observe (c : dval) (now : Z) (t : tm)
     to chronological order — exactly like the trace. *)
 Definition observe_full (c : dval) (now : Z) (s : state) (t : tm)
   : outcome * list (string * entry) * list dval * list (Z * dval) :=
-  let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval) []) in
+  let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval) []
+                             (M.empty (list ascii)) [] 3) in
   (r, live_elements now w.(kv), rev w.(trace), rev w.(journal)).
+
+(** ** C3 (adr-0017) test entry points: run from a SEEDED file system (empty
+    store, instant 0, fds empty, next_fd 3 — the canonical io-initial world), and
+    observe the final file region (sorted by path, like the store observable). *)
+Definition run_file (c : dval) (fl : fsys) (t : tm) : outcome * world :=
+  run [] t (mkWorld (M.empty entry) c 0 [] (M.empty dval) [] fl [] 3).
+
+Definition observe_file (c : dval) (fl : fsys) (t : tm)
+  : outcome * list (string * list ascii) :=
+  let '(r, w) := run_file c fl t in (r, M.elements w.(files)).
 
 (** ** The slice-1 example program: increment the [option]-valued counter at a key.
     [incr_at k] = get k; if absent put (succ zero)=1 else put (succ x).

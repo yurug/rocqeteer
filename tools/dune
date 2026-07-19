@@ -1,0 +1,6 @@
+; rwc — the C3 proven-core file tool (adr-0017). The counting logic is generated
+; from Rocq (Samples.sample_wc_big, theorem FileIO.wc_prog_correct); this
+; executable is the untrusted shell wrapper (argv/exit codes).
+(executable
+ (name rwc)
+ (libraries rkv generated zarith))

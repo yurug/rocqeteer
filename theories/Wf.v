@@ -56,6 +56,10 @@ Definition op_arity (o : op) : nat :=
   | OCacheGet    => 1
   | OCachePut    => 2
   | OJournal     => 1
+  | OOpen        => 2
+  | ORead        => 2
+  | OFWrite      => 2
+  | OClose       => 1
   end%nat.
 
 (** Exact arity of each primitive (the adr-0009/0012 registry). The exhaustive match
@@ -431,6 +435,10 @@ Fixpoint run_checked (env : list dval) (t : tm) (w : world) : option (outcome * 
                     | [v] => (ORet DUnit, set_journal w ((w.(now_ms), v) :: w.(journal)))
                     | _   => (ORet Dstuck, w)
                     end
+                | OOpen | ORead | OFWrite | OClose =>
+                    let '(r, (fl', ft', nf')) :=
+                      handle_file o vs w.(files) w.(fds) w.(next_fd) in
+                    (ORet r, set_io w fl' ft' nf')
                 | _ =>
                     let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in
                     (ORet r, set_kv w s')

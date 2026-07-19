@@ -525,6 +525,82 @@ Definition sample_fold_collect : tm :=
     [let name () = …] per entry), and extraction of it pulls every referenced sample as a
     named value. Adding a program is THEN a one-line edit here — no separate codegen or
     extraction list to keep in sync (kb/spec/codegen.md; tooling iteration). *)
+
+(* ===== C3 (adr-0017): the file family samples + the wc-core program ========== *)
+
+(** The counter key of the wc loop. *)
+Definition wc_key : list ascii := list_ascii_of_string "n".
+
+(** One wc-loop iteration; [fd_idx] is the de Bruijn index of the open descriptor
+    in the ENCLOSING environment (the Repeat body sees the outer binders).
+    Reads a chunk of at most [ml] bytes, adds its length to the store counter.
+    The throw arms are unreachable on the good path (proven in FileIO.v); the
+    PAddChecked guard makes overflow an abort, never garbage. *)
+Definition wc_body (fd_idx : nat) (ml : Z) : tm :=
+  Bind (Perform ORead [VVar fd_idx; VInt ml])            (* ch *)
+    (Bind (Prim PBytesLen [VVar 0])                      (* ln·ch *)
+       (Bind (Perform OGet [VBytes wc_key])              (* cur·ln·ch *)
+          (Match (VVar 0)
+             [(PSome,                                    (* c·cur·ln·ch *)
+               Bind (Prim PAddChecked [VVar 0; VVar 2])  (* s·c·cur·ln·ch *)
+                 (Match (VVar 0)
+                    [(PSome, Perform OPut [VBytes wc_key; VVar 0])]
+                    (Perform OThrow [VBytes (list_ascii_of_string "OVF")])))]
+             (Perform OThrow [VBytes (list_ascii_of_string "NOCTR")])))).
+
+(** wc-core (byte count): open the ctx path read-only, zero the counter, read up
+    to [fuel] chunks of [ml] bytes accumulating lengths, close, return the count.
+    A failed open THROWS the open result (the Tag(1, ENOENT) value) — the shell
+    wrapper's exit-code material.  Correct for files of size <= fuel*ml
+    (FileIO.v [wc_prog_correct]). *)
+Definition wc_prog (fuel : nat) (ml : Z) : tm :=
+  Bind (Perform OAsk [])                                 (* p *)
+    (Bind (Perform OOpen [VVar 0; VInt 0])               (* r·p *)
+       (Match (VVar 0)
+          [(PTag 0,                                      (* fd·r·p *)
+            Bind (Perform OPut [VBytes wc_key; VInt 0])  (* u·fd·r·p *)
+              (Bind (Repeat fuel (wc_body 1 ml))
+                 (Bind (Perform OClose [VVar 2])         (* cl·rep·u·fd·r·p *)
+                    (Bind (Perform OGet [VBytes wc_key])
+                       (Match (VVar 0)
+                          [(PSome, Ret (VVar 0))]
+                          (Perform OThrow
+                             [VBytes (list_ascii_of_string "NOCTR")]))))))]
+          (Perform OThrow [VVar 0]))).
+
+(** Small-instance twin for the differential suites (tiny fuel/chunk so the
+    adversarial corpora exercise many EOF boundaries). *)
+Definition sample_wc : tm := wc_prog 8 3.
+
+(** The TOOL instance (tools/rwc.ml): 64 chunks of 512 bytes — correct for files
+    up to 32 KiB by [FileIO.wc_prog_correct]; the cap is stated, not hidden. *)
+Definition sample_wc_big : tm := wc_prog 64 512.
+
+(** Write-then-read lifecycle: create "out", write two chunks, close, reopen for
+    read, read back a chunk, close — returns (readback, close-flags). *)
+Definition sample_file_rw : tm :=
+  Bind (Perform OOpen [VBytes (list_ascii_of_string "out"); VInt 1])
+    (Match (VVar 0)
+       [(PTag 0,                                          (* fd·r *)
+         Bind (Perform OFWrite [VVar 0; VBytes (list_ascii_of_string "hel")])
+           (Bind (Perform OFWrite [VVar 1; VBytes (list_ascii_of_string "lo!")])
+              (Bind (Perform OClose [VVar 2])
+                 (Bind (Perform OOpen [VBytes (list_ascii_of_string "out"); VInt 0])
+                    (Match (VVar 0)
+                       [(PTag 0,                          (* fd2·r2·cl·w2·w1·fd·r *)
+                         Bind (Perform ORead [VVar 0; VInt 100])
+                           (Bind (Perform OClose [VVar 1])
+                              (Ret (VPair (VVar 1) (VVar 0)))))]
+                       (Perform OThrow [VVar 0]))))))]
+       (Perform OThrow [VVar 0])).
+
+(** The modeled-error VALUES: open a missing path (Tag(1,2)) and probe a stale
+    fd (Tag(1,9)) — programs branch on these, no abort. *)
+Definition sample_file_missing : tm :=
+  Bind (Perform OOpen [VBytes (list_ascii_of_string "absent"); VInt 0])
+    (Bind (Perform ORead [VInt 77; VInt 10])
+       (Ret (VPair (VVar 1) (VVar 0)))).
+
 Definition all_programs : list (string * tm) :=
   [ ("prog0"%string, prog0);
     ("sample_delete"%string, sample_delete);
@@ -560,4 +636,8 @@ Definition all_programs : list (string * tm) :=
     ("sample_journal_throw"%string, sample_journal_throw);
     ("sample_ci_dispatch"%string, sample_ci_dispatch);
     ("sample_fold_collect"%string, sample_fold_collect);
+    ("sample_wc"%string, sample_wc);
+    ("sample_wc_big"%string, sample_wc_big);
+    ("sample_file_rw"%string, sample_file_rw);
+    ("sample_file_missing"%string, sample_file_missing);
     ("demo_prog"%string, demo_prog) ].

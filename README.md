@@ -9,7 +9,8 @@ runtime — native data, effect handlers, direct-style execution. One first-orde
 (**EffIR**) is shared by the Rocq reference interpreter and the OCaml code generator, so *the program you
 prove and the program you run cannot silently become different programs*.
 
-> **Status:** IR v2 is complete (12 effect operations, general `Match`, `Fold`, 16 checked primitives,
+> **Status:** IR v2 is complete (16 effect operations across nine families — including the C3 file
+> family with its proven wc tool — general `Match`, `Fold`, 16 checked primitives,
 > a well-formedness checker, and a weakest-precondition program logic — 413 closed theorems, zero
 > axioms), and the toolchain has its first real consumer: **redoq**, a Redis-compatible server whose
 > 22 data commands, RESP codecs and append-only-file recovery are proven with exactly these tools.
@@ -35,7 +36,7 @@ Rocq EffIR term ──extract──▶ reference interpreter ─┐
 
 ## The effects
 
-Twelve operations over one explicit `world`, grouped into eight effect families. Every family has a
+Sixteen operations over one explicit `world`, grouped into nine effect families. Every family has a
 compiled, proven example in the **[effects gallery](examples/README.md)** (`examples/` builds with
 `make all`, so the gallery cannot rot), and a theory file with the general laws.
 
@@ -49,10 +50,11 @@ compiled, proven example in the **[effects gallery](examples/README.md)** (`exam
 | **Trace** | `OTrace` | the Writer: provable, ordered, structured logging | kernel | [`Tracing.v`](examples/Tracing.v) |
 | **Cache** | `OCacheGet` · `OCachePut` | a memo table invisible to the observable — "only an optimization" is structural | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Memo.v`](examples/Memo.v) |
 | **Journal** | `OJournal` | write-only timestamped log; a proven frame law makes durability an afterthought | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Journaling.v`](examples/Journaling.v) |
+| **Files** | `OOpen` · `ORead` · `OFWrite` · `OClose` | byte streams over descriptors on a pure in-world FS; EOF = the empty chunk; modeled errors are values; the OS seam is named & runtime-checked | kernel ([ADR-0017](kb/architecture/decisions/adr-0017-file-io.md)) | [`Files.v`](examples/Files.v) |
 
 **Effect towers.** The *derived* families are not irreducible trust: each has a proven
-*elaboration* into programs over the five kernel families (plain never-expiring store, clock,
-errors, environment, trace) with a machine-checked refinement theorem per layer
+*elaboration* into programs over the kernel families (plain never-expiring store, clock,
+errors, environment, trace, files) with a machine-checked refinement theorem per layer
 (`Elab.elab_simulates`, `ElabNs.elab_ns_simulates` — axiom-free, no side conditions). A build can
 therefore run in **mode K**: the elaborated programs against kernel realizers only — no deadline
 logic, no cache realizer, no journal realizer in the trusted runtime — and CI differentially tests

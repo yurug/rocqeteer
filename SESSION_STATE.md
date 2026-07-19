@@ -256,3 +256,40 @@ genuinely low-level family (fd byte-stream I/O + process context), ADR-0017 FIRS
 error surface, world model for descriptors, realizer contracts), differential vs coreutils.
 Also pending from the rationale (user-visible): a redoq mode-K CI leg + measuring the mode-K cost
 on redoq's bench at the next pin bump.
+
+## 2026-07-19 — C3 DONE: the file family (ADR-0017) — first low-level kernel family + proven tool
+EffIR: +4 ops (OOpen/ORead/OFWrite/OClose), world +3 regions (files/fds/next_fd), handle_file (EOF =
+empty chunk; modeled errors ENOENT/EBADF as TAGGED VALUES; malformed = Dstuck). Ripple contained:
+mkWorld literal arity (7 files), Journal frame proof (Opaque handle_file + destruct arm), Wf op_arity
++ run_checked twin (soundness proof was shape-generic — zero changes), wrel/nsrel +3 field equalities,
+pass tactics gained scrutinee-destruct arms (handle_file/Z.eqb/Z.leb/M.find/fd_find/Z-match/positive-
+match); both tower theorems re-verified over the extended world UNCHANGED otherwise.
+**theories/FileIO.v** (no Section Variables — the check_no_admitted gate greps assumption vernaculars):
+chunking_invariance (concat of chunk_stream = the stream, ANY ml>=1 — buffer size provably
+unobservable) + wc_prog_correct (GENERAL: every path/contents/fuel/ml covering the file; loop
+invariant threads counter through the store, offset through the fd table; top-down stepping with
+run_bind_eq/run_match_eq/run_repeat_eq — do NOT fight cbn normal forms across independently-reduced
+fix terms, step with definitional equations instead) + EOF boundary instances + wrong-chunking mutant
+(rejected at k*ml±1, plausible at k*ml) + modeled-error instances. Samples: wc_prog fuel/ml family,
+sample_wc (8×3), sample_wc_big (64×512 — the 32KiB tool instance, cap STATED), sample_file_rw,
+sample_file_missing.
+**Runtime**: Rkv.Fileio (Unix.*, no C stubs) — full-read/write loops (EINTR), interposable sys record
+(the Time.source pattern), aliasing REFUSED via (st_dev,st_ino) over the open set (cp posture),
+size/mtime change DETECTED at close (rsync posture), symlinks followed at open, environmental errors
+= Tag(66, reason) at the checked boundary. Manifest: File family + 4 named assumptions
+(Runtime_FS_distinct_inodes CHECKED / Runtime_FS_open_inode_stable / Runtime_File{Read,Write}_full).
+**tools/rwc**: the C3 app — proven core (sample_wc_big), untrusted wrapper (argv→OAsk ctx, outcome→
+exit codes: 0 count, 1 modeled ENOENT, 2 environmental). Handler nesting lesson: Err.run_error must
+be INSIDE Fileio.run_checked or the catch-all converts program throws to Unexpected_exception.
+**tests/diff_file**: three-way reference == generated == coreutils(`wc -c`) through REAL temp files;
+corpora F1-F7 (NUL, high bytes, chunk boundaries k*3±1 and k*512±1, 32KiB, huge line); F8 disk ==
+reference file region (write path); F9 modeled-error values; seam checks FI1-FI5 (short-read
+interposition, EIO→Environmental, aliasing refusal, symlink follow, change detection). 294 cases, 0
+fails, first run. Gallery examples/Files.v; README 16 ops/9 families + File row;
+kb/spec/effect-signatures.md file-family section.
+Deferred (recorded in plan-towers §C3): PCountByte prim (wc -l), mode-K suites over file samples.
+
+## Exact next step (post-C3)
+**C4** per kb/plan-towers.md: sequential HTTP server forcing the sockets family — ADR first (the C3
+chunk discipline reused for ORecv/OSend). Then C5 concurrency (constraints pinned in the plan).
+Also pending: redoq mode-K CI leg + bench measurement at next pin bump.

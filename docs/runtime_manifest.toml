@@ -41,6 +41,47 @@ discharge    = "kernel-v1 — irreducible at this level; dischargeable only by a
 tests        = ["diff_store_k", "diff_cache_k", "diff_journal_k"]
 owner        = "yann"
 
+[effect."File"]
+ocaml_module = "Rkv.Fileio"
+ops          = ["Open", "Read", "FWrite", "Close"]
+backend      = "Unix.openfile/read/write/close behind an Effect.Deep handler (no C stubs); symlinks FOLLOWED at open (cat/wc operand semantics); paths resolved ONLY at open — inode pinning structural (adr-0017); full-read/full-write loops discharge short reads/EINTR; environmental errors (EACCES/EIO/...) become Tag(66, reason) at the checked boundary, never silent"
+result_types = "open: Tag(0,fd)|Tag(1,2=ENOENT value); read: Bytes chunk (EMPTY=EOF)|Tag(1,9=EBADF value); write: Unit|Tag(1,9); close: Bool"
+discharge    = "kernel-v1 — syscall-backed, irreducible at this level (adr-0016 §6; adr-0017)"
+tests        = ["diff_file"]
+owner        = "yann"
+
+[assumption."Runtime_FS_distinct_inodes"]
+statement    = "distinct opened path tokens denote distinct inodes — backs the cross-path frame law. RUNTIME-CHECKED, not blindly trusted: every open fstat's the fd and compares (st_dev, st_ino) against the open set; aliasing (symlink/hardlink/normalization) is REFUSED with a tagged environmental abort (the cp same-file posture)"
+reference    = "EffIR.handle_file over fsys: distinct string keys ARE distinct files"
+fast         = "Fileio.run alias_check at FOpen"
+validated_by = ["diff_file (aliased-operand refusal case)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_FS_open_inode_stable"]
+statement    = "contents of inodes held open are not externally written during a run (the residue POSIX gives no read isolation against — no mandatory locking; the same silent assumption cat/wc/sort make, here NAMED). Path-binding churn (rename/unlink) mid-run is TOLERATED: the fd pins the inode. DETECTION (not prevention): read fds snapshot (size, mtime) at open and re-fstat at close; a detected change is a tagged environmental abort (the rsync/editor posture)"
+reference    = "EffIR.world.files immutable except through the run's own ops"
+fast         = "Fileio.run snap check at FClose"
+validated_by = ["diff_file (mid-run modification detection case)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_FileRead_full"]
+statement    = "read fd maxlen returns EXACTLY min(maxlen, remaining) bytes (EOF = fewer, empty = at-EOF): the realizer loop discharges POSIX short reads and EINTR so the reference's deterministic chunk (file_chunk) is realized verbatim"
+reference    = "EffIR.file_chunk (firstn maxlen (skipn off contents))"
+fast         = "Fileio.read_full loop"
+validated_by = ["diff_file (short-read interposition via the sys seam: chunks unchanged)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_FileWrite_full"]
+statement    = "write fd bytes appends ALL bytes: the realizer loop discharges partial writes and EINTR; short writes do not exist at the IR level"
+reference    = "EffIR.handle_file OFWrite: contents ++ bytes"
+fast         = "Fileio.write_full loop"
+validated_by = ["diff_file (short-write interposition via the sys seam)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 [effect."Time"]
 ocaml_module = "Rkv.Time"
 ops          = ["Now"]

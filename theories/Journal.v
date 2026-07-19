@@ -270,7 +270,7 @@ Qed.
     [handle_store] is kept opaque during THIS proof only, so the store ops stay one
     destructible call instead of cbn-exploding into liveness case analysis (the store
     never touches the journal — that is all the proof needs). *)
-Opaque handle_store.
+Opaque handle_store handle_file.
 Theorem run_journal_frame : forall t env, jframe (run env t).
 Proof.
   apply (tm_ind_strong (fun t => forall env, jframe (run env t))).
@@ -289,6 +289,8 @@ Proof.
       repeat match goal with
              | |- context [handle_store ?a ?b ?c ?d] =>
                  destruct (handle_store a b c d) as [? ?]
+             | |- context [handle_file ?a ?b ?c ?d ?e] =>
+                 destruct (handle_file a b c d e) as [? [[? ?] ?]]
              end;
       try reflexivity;
       destruct (map (eval_val env) args) as [| va vsa];
@@ -324,7 +326,7 @@ Proof.
         try (intros w j; reflexivity).
       apply fold_elems_frame, Hb.
 Qed.
-Transparent handle_store.
+Transparent handle_store handle_file.
 
 (** Corollary, the adr-0013 reading: the OUTCOME is independent of the prior journal. *)
 Corollary journal_frame_outcome :
@@ -361,7 +363,7 @@ Qed.
     entry — same outcome, and the chronological journal is prior ++ the three new ones. *)
 Definition jseed : list (Z * dval) := [(-7, DInt 0)].
 Definition seeded_world : world :=
-  mkWorld (M.empty entry) jctx 0 [] (M.empty dval) jseed.
+  mkWorld (M.empty entry) jctx 0 [] (M.empty dval) jseed (M.empty (list ascii)) [] 3.
 
 Theorem journal_frame_concrete_journal :
   rev (journal (snd (run [] sample_journal seeded_world)))
@@ -531,7 +533,7 @@ Proof. vm_compute. intro H. discriminate H. Qed.
 (** The mutant VIOLATES the frame law: its outcome depends on the prior journal
     (empty start: DInt 1; seeded start: DInt 2)... *)
 Definition seeded_probe_world : world :=
-  mkWorld (M.empty entry) DUnit 0 [] (M.empty dval) jseed.
+  mkWorld (M.empty entry) DUnit 0 [] (M.empty dval) jseed (M.empty (list ascii)) [] 3.
 
 Theorem mutant_jread_violates_frame :
   (let '(o, _) := run_jread [] journal_probe (init_world DUnit 0) in o)

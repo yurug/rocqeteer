@@ -15,6 +15,7 @@ where the *general* laws (∀-quantified, with frame clauses, mutants, and inhab
 | **Trace** (Writer) | `OTrace` | provable structured logging, in order | [`Tracing.v`](Tracing.v) | [`theories/Trace.v`](../theories/Trace.v) |
 | **Cache** | `OCacheGet` `OCachePut` | memoization; the cache is invisible to the observable *by construction* | [`Memo.v`](Memo.v) | [`theories/Cache.v`](../theories/Cache.v) |
 | **Journal** | `OJournal` | timestamped durability log; journaling never changes results (the frame law); replay | [`Journaling.v`](Journaling.v) | [`theories/Journal.v`](../theories/Journal.v) |
+| **Files** | [`Files.v`](Files.v) | write-read roundtrip; exact counts at EOF chunk boundaries; modeled errors as values (`wc_prog_correct` / `chunking_invariance` in [`theories/FileIO.v`](../theories/FileIO.v)) |
 | **Combinators** (not effects) | `Match` `Repeat` `Fold` + 16 checked prims | tagged-union dispatch, bounded loops, argv-style folds, soft-failing arithmetic/parsing | [`Combinators.v`](Combinators.v) | [`theories/Recur.v`](../theories/Recur.v), [`theories/Fold.v`](../theories/Fold.v), [`theories/Prims.v`](../theories/Prims.v) |
 
 Beyond instances: the **program logic** (`theories/Logic.v`, a shallow weakest-precondition layer over

@@ -53,7 +53,7 @@ Definition verifies (now : Z) (t : tm) (sp : Spec) : Prop :=
   forall s, pre sp s ->
     (* run from a world whose store is [s] at instant [now]; the spec constrains the
        final map [w'.(kv)]. *)
-    let '(x, w') := run [] t (mkWorld s DUnit now [] (M.empty dval) []) in post sp s x w'.(kv).
+    let '(x, w') := run [] t (mkWorld s DUnit now [] (M.empty dval) [] (M.empty (list ascii)) [] 3) in post sp s x w'.(kv).
 
 (** The current integer counter at [k], read through the LIVE view (0 if absent, expired,
     or non-integer). *)
