@@ -129,3 +129,43 @@ let run_checked ~now table f =
 let observe ~(now : Z.t) (table : entry T.t) : (bytes * entry) list =
   T.fold (fun k e acc -> if live now e then (k, e) :: acc else acc) table []
   |> List.sort (fun (a, _) (b, _) -> Bytes.compare a b)
+
+(* ===== ADR-0016 mode K: the KERNEL store handler ============================ *)
+
+(** The kernel store: a plain, never-expiring [bytes -> Rval.t] table.  NO deadline
+    logic and NO clock coupling — expiry semantics live in the PROVEN elaboration
+    (theories/Elab.v [elab], theorem [elab_simulates]); the values stored here are
+    the packed [Rval.Pair (v, dl)] entries the elaborated code writes.
+
+    [GetDeadline]/[SetDeadline] are deliberately NOT handled: an elaborated program
+    never performs them, so one escaping is a loud [Effect.Unhandled] at the
+    [run_kernel_checked] boundary — never a silent wrong answer. *)
+let run_kernel (table : value T.t) (f : unit -> 'a) : 'a =
+  match f () with
+  | v -> v
+  | effect Get k, kont ->
+      Effect.Deep.continue kont
+        (match T.find_opt table k with
+         | Some v -> Rval.Some v
+         | None -> Rval.None)
+  | effect Put (k, v), kont ->
+      T.replace table k v;
+      Effect.Deep.continue kont Rval.Unit
+  | effect Delete k, kont ->
+      (* every kernel binding is live (deadline-free), so the reference's
+         live-removal flag degenerates to presence *)
+      let present = T.mem table k in
+      T.remove table k;
+      Effect.Deep.continue kont (Rval.Bool present)
+
+let run_kernel_checked table f =
+  try Ok (run_kernel table f) with
+  | Effect.Unhandled _ as e -> Error (`Unhandled_effect (Printexc.to_string e))
+  | e -> Error (`Unexpected_exception (Printexc.to_string e))
+
+(** Kernel observable: sorted (key, value) over ALL bindings (kernel bindings never
+    expire).  The mode-K harness unpacks the pairs and liveness-filters on the test
+    side — the theorem's projection, in untrusted code. *)
+let observe_kernel (table : value T.t) : (bytes * value) list =
+  T.fold (fun k v acc -> (k, v) :: acc) table []
+  |> List.sort (fun (a, _) (b, _) -> Bytes.compare a b)

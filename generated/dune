@@ -8,6 +8,16 @@
  (action
   (with-stdout-to prog0_generated.ml (run %{exe:../codegen/codegen.exe}))))
 
+; progk_generated.ml (ADR-0016 mode K): the SAME single-source list, pre-elaborated
+; in Rocq by the PROVEN Expiry elaboration (theories/Elab.v elab_simulates, extracted
+; as Elab.elab_programs) — deadline semantics compiled away into kernel ops. Runs
+; against Kv.run_kernel (no deadline logic, no clock). Same freshness gate.
+(rule
+ (target progk_generated.ml)
+ (mode promote)
+ (action
+  (with-stdout-to progk_generated.ml (run %{exe:../codegen/codegen.exe} --elab))))
+
 (library
  (name generated)
  (libraries rkv zarith)

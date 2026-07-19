@@ -187,7 +187,39 @@ this"): no vacuum redesign of primitives — instead the tower discipline. Artif
   purely functional compiler = CompCert territory, exercises no effects). Glossary + indexes updated;
   kb-lint 54 files 0 errors.
 
-## Exact next step (2026-07-19)
-**C1**: implement the tower mechanism + `elab_expiry` per adr-0016 §2–3 and plan-towers §C1. Direction
-approved by user 2026-07-19; house pattern applies (delegated implementation, from-clean make all,
-trust-diff review before commit).
+## 2026-07-19 — C1 DONE: the Expiry tower (ADR-0016) — proven, extracted, mode-K green
+**theories/Elab.v** (~900 lines): `elab : tm -> tm` macro-expands the 5 expiry-surface ops into KERNEL
+fragments (plain Get/Put/Delete + ONow; packed entries `DPair v dl` under never-expiring bindings).
+Design keys that made it tractable: (1) bind-evaluated-args-once-at-db0 discipline — ZERO de Bruijn
+shifting anywhere; (2) `Bind(Ret(VPair k dv))` + `Match PPair` to bind two args without shifts;
+(3) is-an-int test = `Prim PCmpInt [x;x]` (DInt 0 iff int — total-prims trick); (4) setdl validates
+the ARG SHAPE before the store lookup (handle_store's match order — Dstuck even on absent keys);
+(5) Dstuck is producible as `VSucc VUnit`; passthrough of kernel Dstuck via `Ret (VVar n)`.
+**THE THEOREM `elab_simulates`** (axiom-free, 12/12 Print Assumptions closed): ∀ t env w wk,
+wrel w wk → same outcome + wrel preserved — NO wf side condition (malformed Dstucks reproduced
+bit-for-bit). wrel = kv M.Equal-to-`M.map pack_entry` + all other fields equal (relation approach —
+sidesteps AVL structural-eq of map∘add; FMapFacts pointwise lemmas only). Corollaries: run_top,
+seeded (observe_full shape), observe-level (outcome/trace/journal EQUAL + find-pointwise store).
+`wf_elab` (gate needs no special case) + boundary d-1/d/d+1 instances through elab + `<`-liveness
+MUTANT elaboration rejected at the boundary (plausible away from it) + inhabitance witnesses +
+`elab_all_programs_wf`. Proof-engineering traps hit (remember): Ltac `t1; t2; [a|b]` dispatch binds
+to ALL goals in flight — parenthesize `(split; [a|b])` per-goal; cbn keeps `apply_cmp_int d d`
+folded on abstract args (unfold + `Z.compare_refl`); `reflexivity` closes `M.Equal x x` via the
+Equivalence instance (so `repeat split; reflexivity` proves wrel refl-instances).
+**Mode-K pipeline**: Extr.v extracts `Elab.elab`+`elab_programs` (same names, elaborated bodies);
+codegen `--elab` flag iterates the pre-elaborated list (NO elaboration logic in the trusted driver);
+`generated/progk_generated.ml` (promoted, freshness-gated, wf-gated, 0 deadline-op calls);
+`Kv.run_kernel` (+_checked/observe_kernel) = the ONLY new trusted code: plain table, no deadline
+logic, NO clock, deadline ops UNHANDLED (loud). Manifest: Store gains `discharge =
+derived(Elab.elab_simulates)`; new `Store_kernel` entry (kernel-v1); TCB report has the tower rows.
+**tests/diff_store_k.ml**: same adversarial protocol as diff_store (seeded expiring states, boundary
+instants, K/D/P coverage asserted) — reference(source, expiring) vs fast-K(elaborated, kernel);
+packing/π in untrusted harness code. GREEN first run: 3000 states × 5 programs, 0 fails, boundary
+asserted. From-clean `make all`: theory+extraction+codegen+17 test suites+demo green; all CI gates
+pass (tcb drift = this commit's intended change). TCB: expiry semantics now PROVEN, not trusted —
+the fused kv.ml realizer is a mode-F performance option.
+
+## Exact next step (post-C1)
+**C2** (plan-towers): `elab_cache` (null elaboration via cache_invisible) + `elab_journal` (reserved
+kernel key + adr-0014 namespace wf extension) + manifest `discharge` field schema/CI check + README
+"The effects" kernel/derived column — the PRE-redoq-ANNOUNCEMENT item.

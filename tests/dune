@@ -1,3 +1,3 @@
 (tests
- (names diff_test diff_kv diff_err diff_env diff_trace diff_cache codec_test diff_bytes diff_dispatch diff_prims diff_structval diff_store diff_time diff_fold diff_journal wf_gate_test)
+ (names diff_test diff_kv diff_err diff_env diff_trace diff_cache codec_test diff_bytes diff_dispatch diff_prims diff_structval diff_store diff_store_k diff_time diff_fold diff_journal wf_gate_test)
  (libraries ref_extracted coqconv rkv generated zarith rocqeteer_codegen))

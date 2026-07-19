@@ -57,3 +57,16 @@ val run_checked : now:Time.source -> entry T.t -> (unit -> 'a) -> ('a, error) re
 (** Order-independent observable for differential testing: sorted (key, entry) of the
     LIVE bindings at instant [now] (expired filtered, like the reference live_elements). *)
 val observe : now:Z.t -> entry T.t -> (bytes * entry) list
+
+(** ADR-0016 mode K — the KERNEL handler: a plain never-expiring [bytes -> Rval.t]
+    store with NO deadline logic and NO clock; expiry lives in the proven elaboration
+    (theories/Elab.v [elab_simulates]).  Handles Get/Put/Delete ONLY — a deadline op
+    escaping an elaborated program is a loud [`Unhandled_effect] at the checked
+    boundary, never a silent wrong answer. *)
+val run_kernel : value T.t -> (unit -> 'a) -> 'a
+
+val run_kernel_checked : value T.t -> (unit -> 'a) -> ('a, error) result
+
+(** Kernel observable: sorted (key, value) over ALL bindings; the mode-K harness
+    unpacks and liveness-filters test-side (the theorem's projection). *)
+val observe_kernel : value T.t -> (bytes * value) list

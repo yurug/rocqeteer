@@ -27,7 +27,18 @@ backend      = "Hashtbl(bytes) of (Rval.t * deadline option) + Effect.Deep handl
 key_type     = "bytes (byte strings; reference converts list ascii -> string keys)"
 value_type   = "Rval.t + optional absolute deadline (Z, ms)"
 deadline_semantics = "live iff now <= d (alive AT the deadline, dead at d+1ms); (v, None) never expires; Put CLEARS the deadline; Delete returns live-removal; expired = absent for every op and for observe. Boundary validated by the 12,500-case prediction-vs-oracle run (verdis O1, 0 mismatches) and re-asserted per key at d-1/d/d+1 by diff_store; the < mutant is rejected in theories/TimeStore.v"
+discharge    = "derived(Elab.elab_simulates) — ADR-0016 C1: the EXPIRY surface (deadline liveness in Get/Delete, GetDeadline, SetDeadline) is dischargeable, not irreducible: theories/Elab.v proves (axiom-free, no wf side condition) that every program's expiry behavior equals its elaboration over the KERNEL fragment (plain Get/Put/Delete + Now); the < mutant elaboration is observably rejected at the boundary. Mode K runs the elaborated programs (generated/progk_generated.ml) against Store_kernel below — CI witness diff_store_k. This fused realizer stays trusted-and-tested in mode F (production default) as a PERFORMANCE option."
 tests        = ["diff_test", "diff_kv", "diff_store"]
+owner        = "yann"
+
+[effect."Store_kernel"]
+ocaml_module = "Rkv.Kv (run_kernel / run_kernel_checked / observe_kernel)"
+ops          = ["Get", "Put", "Delete"]
+backend      = "Hashtbl(bytes) of Rval.t + Effect.Deep handler, one-shot continue; NO deadline logic, NO clock coupling; GetDeadline/SetDeadline deliberately UNHANDLED (an escaping deadline op is a loud Unhandled_effect at the checked boundary, never a silent wrong answer)"
+key_type     = "bytes"
+value_type   = "Rval.t (mode K stores the PACKED Pair(v, deadline-encoding) values the proven elaboration writes)"
+discharge    = "kernel-v1 — irreducible at this level; dischargeable only by a future lower kernel (adr-0016 §6)"
+tests        = ["diff_store_k"]
 owner        = "yann"
 
 [effect."Time"]
