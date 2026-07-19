@@ -28,6 +28,7 @@ related: [index, arch-overview]
 | `adr-0014-wf-checker.md` | R10 v1 = PROVEN wf checker (scope+arity; kills scope-Dstuck at build time; codegen refuses non-wf); value-shape typing = open phase 2 | R10 design (2026-07-11) |
 | `adr-0015-program-logic.md` | R14 = shallow wp over run (no second semantics): rules per construct/op/prim, keyed store assertions, Repeat/Fold invariant rules, wp_* tactics — the road to forall-quantified specs and the consumer's crown-jewel replay theorem | R14 design (2026-07-13) |
 | `adr-0016-effect-towers.md` | Effect towers: 7-op kernel / 5 derived ops (Expiry, Cache, Journal) discharged by proven elaborations + refinement theorems; mode-K (kernel-only) execution in CI; manifest `discharge` field | design review 2026-07-19 ("chosen-for-redoq" + TCB-descent critiques) |
+| `adr-0017-file-io.md` | **PROPOSED** (C3, awaiting user review): byte-stream file I/O — 4 kernel ops over a pure in-world FS; empty-chunk EOF; modeled errors are values, environmental errors abort tagged; argv/stdio via OAsk + pre-opened fds (zero new ops); full-read/write realizer loop contracts | C3 design (2026-07-19) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing

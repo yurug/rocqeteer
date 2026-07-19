@@ -14,7 +14,7 @@ related: [index, adr-index]
 |------|-----------------|
 | `overview.md` | How the pipeline composes: EffIR → proofs → extraction → codegen → runtime; the TCB layers. |
 | `tower-rationale.md` | Why effect towers matter although the mode-F production binary is byte-identical (assurance dial, evidence, TCB-growth curve, credibility). |
-| `decisions/INDEX.md` | The 16 ADRs, each traced to the failure mode or design review it defends against. |
+| `decisions/INDEX.md` | The 17 ADRs (0017 proposed), each traced to the failure mode or design review it defends against. |
 
 ## Related files
 - `../INDEX.md` — top-level KB routing.

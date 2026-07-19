@@ -40,7 +40,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 ## Map of the KB
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
-- `architecture/INDEX.md` — overview, `decisions/` (16 ADRs), and `architecture/tower-rationale.md`
+- `architecture/INDEX.md` — overview, `decisions/` (17 ADRs — 0017 PROPOSED, awaiting review), and `architecture/tower-rationale.md`
   (why towers matter though mode F is byte-identical — the assurance-dial / evidence / TCB-growth /
   credibility arguments): pipeline, TCB layers, and the decisions behind them.
 - `spec/` (8 + index) — EffIR, effect signatures, reference semantics, **program-logic** (the R14 shallow wp layer), codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
