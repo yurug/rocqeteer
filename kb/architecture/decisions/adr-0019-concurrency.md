@@ -1,7 +1,7 @@
 ---
 id: adr-0019-concurrency
 type: decision
-summary: PROPOSED (C5 capstone, user review pending — no realizer lands before approval) — cooperative concurrency via a SCHEDULE ORACLE (the C4 connection-script pattern generalized from content to interleaving); the hard part is representing a suspended fiber first-order — resolved by a defunctionalized continuation (a frame-stack STEP MACHINE over the SAME tm, not a second IR), load-bearing obligation = prove the machine agrees with big-step run on the concurrency-free fragment so the oracle is preserved; 4-5 ops (OSpawn/OYield/OChanSend/OChanRecv, maybe OChanMake), channels the only sharing (no shared memory, no data races representable), one-shot continuations (invariant 7); deterministic given the schedule, theorems quantify over schedules, differential replays recorded schedules; backend = OCaml 5 Effect.Deep fibers (Eio-style, no Eio dep); driver = the C4 server's accept loop made concurrent, sequential semantics recovered under the singleton schedule.
+summary: C5 capstone (open questions RESOLVED 2026-07-22; C5.1 adequacy spike authorized) — cooperative concurrency via a SCHEDULE ORACLE (the C4 connection-script pattern generalized from content to interleaving); the hard part is representing a suspended fiber first-order — resolved by a defunctionalized continuation (a frame-stack STEP MACHINE over the SAME tm, not a second IR), load-bearing obligation = prove the machine agrees with big-step run on the concurrency-free fragment so the oracle is preserved; 5 ops (OSpawn body-by-index/OYield/OChanMake/OChanSend/OChanRecv), channels the only sharing (no shared memory, no data races representable), one-shot continuations (invariant 7); deterministic given the schedule, theorems quantify over schedules, differential replays recorded schedules; backend = OCaml 5 Effect.Deep fibers (Eio-style, no Eio dep); driver = the C4 server's accept loop made concurrent, sequential semantics recovered under the singleton schedule. Resolved: Q1 statically-named tm by index (no IR change), Q2 OChanMake dynamic channels, Q3 spike CEK on Ret/Bind/Perform then commit-or-fallback.
 domain: architecture
 last-updated: 2026-07-22
 depends-on: [effir, adr-0001-first-order-ast, adr-0004-trust-model, adr-0011-time-and-expiring-store, adr-0016-effect-towers, adr-0018-sockets]
@@ -10,9 +10,10 @@ related: [plan-towers, tower-rationale, runtime-manifest]
 ---
 # ADR-0019 — Cooperative concurrency: the schedule oracle and the fiber step machine (PROPOSED)
 
-> **Status: PROPOSED for C5 (the phase-C capstone).** ADR-first per the house pattern; syscall/runtime
-> realizers await approval. This ADR leads with the representation problem (§Context) because it is the
-> make-or-break decision, and names its biggest proof risk with a scoped fallback (§Decision 2, §Risk).
+> **Status: OPEN QUESTIONS RESOLVED 2026-07-22 (§Resolved); C5.1 adequacy spike authorized.** ADR-first
+> per the house pattern; the runtime realizer still awaits its own review once the spike result is in.
+> This ADR leads with the representation problem (§Context) because it is the make-or-break decision, and
+> names its biggest proof risk with a scoped fallback (§Decision 2, §Risk).
 
 ## Context — the representation problem, stated first
 C5 ([[plan-towers]] §C5) is the user-flagged missing family: concurrency. Every prior family threaded
@@ -56,11 +57,11 @@ two backends; concurrency must not introduce a second *program* representation.
    an unvalidated second semantics. Every C0–C4 theorem then transfers: the sequential fragment's oracle
    is unchanged, and concurrency is a *conservative extension* (a program with no `OSpawn` runs
    identically to today). Anti-vacuity is built in: if adequacy fails, the whole family is rejected.
-4. **Four ops (maybe five), channels the only sharing.** `OSpawn [body]` (body a `tm` value — a
-   *thunk*; adr-0010 already crosses first-order code as data? NO — see §Open) enqueues a new fiber,
-   returns its id; `OYield []` → the scheduler; `OChanSend [ch; v]` / `OChanRecv [ch]` block-and-resume
-   via the channel table; optionally `OChanMake []` → a fresh channel id (or channels are pre-created in
-   the initial world, like C4's stdio fds — decide in review). **No shared mutable memory op** — fibers
+4. **Five ops, channels the only sharing** *(resolved — §Resolved).* `OSpawn [body_id]` enqueues a new
+   fiber whose body is a **statically-named closed `tm`** referenced by index (no IR change — §Resolved
+   Q1), returns its id; `OYield []` → the scheduler; `OChanMake []` → a fresh channel id (§Resolved Q2:
+   dynamic creation, with id-allocation in the world like `next_fd`/`next_conn`); `OChanSend [ch; v]` /
+   `OChanRecv [ch]` block-and-resume via the channel table. **No shared mutable memory op** — fibers
    share ONLY through channels, so **data races are not representable** (the strongest safety property in
    the project, structural not proven). One-shot continuations throughout (invariant 7): a resumed
    `(tm, kont)` is consumed, never re-run.
@@ -110,16 +111,20 @@ concurrency, and its adequacy is near-trivial (each segment IS a `run`). Recomme
 CEK machine; fall back to statement-boundary blocking if the adequacy induction does not close in the
 C5.1 spike.** This is the C1 pattern (attempt the strong theorem, named fallback ready) at higher stakes.
 
-## Open questions for review (gate implementation)
-- **`OSpawn`'s body as data.** A spawned fiber's body is a `tm`. Does it cross the op boundary as a
-  first-order `tm` value (needs a `dval` embedding of `tm` — a real IR extension, invariant-1-adjacent),
-  or is the fiber body a *statically named* closed `tm` the program references by index (no IR change,
-  the redoq/argv pattern)? The latter is strongly preferred; confirm it suffices for the concurrent
-  server (one fiber body: handle-connection).
-- **Channels: pre-created vs `OChanMake`.** Dynamic channel creation is more expressive but adds an op
-  and an id-allocation story; the server needs only per-connection channels. Pre-create in the initial
-  world (C4 stdio pattern) unless review wants dynamism.
-- **CEK vs statement-boundary** (§Risk) — the load-bearing scope decision.
+## Resolved (2026-07-22, decision console)
+- **Q1 — IR surface: statically-named `tm` by index. No IR change.** A spawned fiber's body is a closed
+  `tm` the program references by index (the redoq/argv pattern); `tm`, the `dval` universe, and `wf`
+  stay untouched, so the adequacy proof never sees it. The `dval`-embedding-of-`tm` alternative (real
+  IR extension, invariant-1-adjacent) was rejected — large blast radius for capability no current app
+  needs (the concurrent server spawns one body: handle-connection).
+- **Q2 — Channels: `OChanMake`, dynamic creation.** Chosen over pre-creation for a general channel model;
+  cost is +1 op and an id-allocation story in the `world` (a `next_chan : Z` counter, the
+  `next_fd`/`next_conn` pattern). Deliberately spends scope in the *op set* (cheap) rather than the
+  adequacy proof (expensive) — consistent with the risk-managed posture.
+- **Q3 — Proof scope: spike CEK on Ret/Bind/Perform; commit if adequacy closes, else statement-boundary.**
+  The risk-managed path (§Risk). The C5.1 spike (below) decides CEK-vs-fallback on evidence, not upfront.
+- **Aggregate posture: risk-managed** — scope kept tight, the one real proof risk concentrated in a
+  single spiked obligation.
 
 ## What this means for implementers (post-approval)
 - **C5.1 spike FIRST**: build the step machine, prove adequacy on a 3-construct fragment
