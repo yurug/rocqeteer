@@ -418,3 +418,31 @@ HTTP driver: spawn a fiber per accepted connection, recover C4's http_prog_corre
 schedule. Then (gated on its OWN review per adr-0019) the OCaml Effect.Deep scheduler + differential
 (record-and-replay the schedule, the C4 pattern). Still pending: redoq mode-K CI leg + bench; PCountByte;
 mode-K over file/socket samples.
+
+## 2026-07-22 — C5 general sequential embedding proven (Cek bridge + Sched embedding)
+Two GENERAL theorems (both axiom-free), turning the concrete seq_embedding instance into proven law:
+**theories/Cek.v §5b — the executable bridge:** star_drive (any star-reachable HALTED config is reached
+by the fuel driver `drive` — via step_halted + drive_stable, halted configs are step-fixpoints so drive
+parks) + **cek_drive_run** (GENERAL, every t: exists n, drive n (CEval t env [] w) = CRet (fst (run env
+t w)) [] (snd ...)). I.e. the EXECUTABLE step machine computes big-step run for every program — the
+statement the OCaml scheduler realizes (running a fiber IS running run). Corollary of cek_adequate +
+star_drive.
+**theories/Sched.v §5b — the scheduler embedding:** seq_embedding_general (GENERAL): given the clean
+machine-interface hypothesis Hrun (run_to_sched RTS_FUEL (FE t [][]) w = (FR (fst run) [], snd run)),
+a single-fiber schedule [fid] reaps the fiber into sdone with run's outcome, leaves swld at run's final
+world, sfib empty. The scheduler BOOKKEEPING (lookup/reap/done/world) is proven general; Hrun is the
+isolated interface to the machine, dischargeable via cek_drive_run (+ conc-free invariant for the fuel-
+suffices step, the next unit). fS_runs_to_run discharges Hrun concretely (vm_compute) → seq_embedding_fS
+corollary, showing the general theorem is inhabited/usable. Proof note: symbolic fid needs explicit
+lookupZ/removeZ helper facts (Z.eqb fid fid = true) — cbn won't reduce Z.eqb on a variable.
+Theory-only; no-admitted gate green; 330 closed-assumption lines across theories.
+
+## Exact next step (post general-embedding)
+(1) conc-free invariant: conc_free tm + step preserves it + fconc None on conc-free → run_to_sched of a
+conc-free fiber = of_cfg ∘ drive, discharging Hrun GENERALLY for every conc-free-and-fuel-sufficient t
+(closes the loop: seq_embedding_general holds unconditionally for conc-free fibers). (2) The CONCURRENT
+HTTP driver: spawn a fiber per accepted connection; under the singleton (run-to-completion) schedule the
+transcript = C4's sequential accept loop, recovering SockIO.http_prog_correct — a real Sched↔SockIO
+theorem. (3) Gated on its OWN review (adr-0019): the OCaml Effect.Deep scheduler + record-and-replay
+differential (the C4 schedule-as-oracle pattern). Still pending: redoq mode-K CI leg + bench; PCountByte;
+mode-K over file/socket samples.

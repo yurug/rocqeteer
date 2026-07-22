@@ -299,6 +299,56 @@ Theorem spawn_runs :
   /\ sfib (run_sched bodies_sp [1; 2; 1] s_sp) = [].
 Proof. split; vm_compute; try reflexivity; auto. Qed.
 
+(* ===== §5b  The GENERAL single-fiber sequential embedding =================== *)
+
+(** The scheduler bookkeeping is proven GENERAL: for ANY term whose fiber runs (to a
+    halted state) with exactly big-step [run]'s result — hypothesis [Hrun], the clean
+    interface to the machine — a single-fiber schedule [[fid]] reaps it into the done
+    list with [run]'s outcome, and leaves the shared world at [run]'s final world and
+    no fibers remaining.  [Hrun] is dischargeable: [Cek.cek_drive_run] gives, for
+    EVERY term, a fuel driving the CEK machine to exactly [run]; for a concurrency-free
+    term that fuel makes [run_to_sched] (which never stops at a conc op) equal
+    [run] — witnessed concretely just below and, in general, via the conc-free
+    invariant (the next unit).  This isolates the schedule/transcript accounting as
+    the proven-general part. *)
+Theorem seq_embedding_general : forall t w1 fid nf nc,
+  run_to_sched RTS_FUEL (FE t [] []) w1
+  = (FR (fst (run [] t w1)) [], snd (run [] t w1)) ->
+  let s := run_sched nb [fid] (init_sst w1 [(fid, FE t [] [])] [] nf nc) in
+  swld s = snd (run [] t w1)
+  /\ sdone s = [(fid, fst (run [] t w1))]
+  /\ sfib s = [].
+Proof.
+  intros t w1 fid nf nc Hrun. cbn zeta.
+  assert (Hlk : lookupZ fid [(fid, FE t [] [])] = Some (FE t [] []))
+    by (simpl; rewrite Z.eqb_refl; reflexivity).
+  assert (Hrm : removeZ fid [(fid, FE t [] [])] = [])
+    by (simpl; rewrite Z.eqb_refl; reflexivity).
+  unfold run_sched, sched_one, init_sst; cbn [sfib swld schan sdone snextf snextc].
+  rewrite Hlk; cbn [fst snd].
+  rewrite Hrun; cbn [fdone].
+  rewrite Hrm.
+  repeat split; reflexivity.
+Qed.
+
+(** [Hrun] is inhabited: the concurrency-free [fS] discharges it by [vm_compute], so
+    the general theorem specializes to the concrete sequential embedding — the same
+    fact [seq_embedding] states, now as an instance of the general accounting. *)
+Theorem fS_runs_to_run :
+  run_to_sched RTS_FUEL (FE fS [] []) w0
+  = (FR (fst (run [] fS w0)) [], snd (run [] fS w0)).
+Proof. vm_compute. reflexivity. Qed.
+
+Corollary seq_embedding_fS :
+  swld (run_sched nb [1] (init_sst w0 [(1, FE fS [] [])] [] 2 1))
+    = snd (run [] fS w0)
+  /\ sdone (run_sched nb [1] (init_sst w0 [(1, FE fS [] [])] [] 2 1))
+    = [(1, fst (run [] fS w0))].
+Proof.
+  destruct (seq_embedding_general fS w0 1 2 1 fS_runs_to_run) as (Hw & Hd & _).
+  split; [exact Hw | exact Hd].
+Qed.
+
 (* ===== §6  Print Assumptions ================================================ *)
 
 (** Each must read "Closed under the global context". *)
@@ -307,3 +357,5 @@ Print Assumptions seq_embedding.
 Print Assumptions deadlock.
 Print Assumptions producer_consumer.
 Print Assumptions spawn_runs.
+Print Assumptions seq_embedding_general.
+Print Assumptions seq_embedding_fS.

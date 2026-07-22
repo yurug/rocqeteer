@@ -304,6 +304,47 @@ Theorem ex_machine_matches_run :
          [] (snd (run [] ex (init_world DUnit 0))).
 Proof. vm_compute. reflexivity. Qed.
 
+(* ===== §5b  The EXECUTABLE bridge: the fuel driver computes big-step run ===== *)
+
+(** [star] is reachability; [drive] is the executable fuel iterator.  A halted
+    config is a fixpoint of [step], so [drive] parks on it. *)
+Lemma step_halted : forall c, halted c = true -> step c = c.
+Proof.
+  intros c H; destruct c as [t e k w | o k w].
+  - discriminate H.
+  - destruct k; [reflexivity | discriminate H].
+Qed.
+
+Lemma drive_stable : forall n c, halted c = true -> drive n c = c.
+Proof.
+  intros n; induction n as [| n IHn]; intros c H;
+    [reflexivity | simpl; rewrite H; reflexivity].
+Qed.
+
+(** Any [star]-reachable HALTED config is reached by [drive] with some fuel. *)
+Lemma star_drive : forall c c', star c c' -> halted c' = true -> exists n, drive n c = c'.
+Proof.
+  intros c c' Hs; induction Hs as [c | c c'' Hstar IH]; intros Hcpp.
+  - exists O. reflexivity.
+  - destruct (IH Hcpp) as [n Hn].
+    destruct (halted c) eqn:Hcl.
+    + rewrite (step_halted c Hcl) in Hn.
+      rewrite (drive_stable n c Hcl) in Hn.
+      exists O. exact Hn.
+    + exists (S n). simpl. rewrite Hcl. exact Hn.
+Qed.
+
+(** THE bridge (general, every program): the executable step machine, driven with
+    enough fuel, computes EXACTLY big-step [run] — outcome and world.  Corollary of
+    adequacy ([cek_adequate]) plus [star_drive].  This is what the OCaml scheduler
+    realizes: running a fiber IS running [run]. *)
+Theorem cek_drive_run : forall t env w,
+  exists n, drive n (CEval t env [] w)
+            = CRet (fst (run env t w)) [] (snd (run env t w)).
+Proof.
+  intros t env w. apply (star_drive _ _ (cek_adequate t env w)). reflexivity.
+Qed.
+
 (* ===== §6  Print Assumptions ================================================ *)
 
 (** Each must read "Closed under the global context" — the machine is axiom-free. *)
@@ -314,3 +355,5 @@ Print Assumptions cek_fold.
 Print Assumptions cek_run.
 Print Assumptions cek_adequate.
 Print Assumptions ex_machine_matches_run.
+Print Assumptions star_drive.
+Print Assumptions cek_drive_run.
