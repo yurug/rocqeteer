@@ -40,7 +40,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 ## Map of the KB
 - `GLOSSARY.md` — controlled vocabulary.
 - `domain/prd.md` — product requirements, scope, success criteria.
-- `architecture/INDEX.md` — overview, `decisions/` (18 ADRs — 0018 PROPOSED, awaiting review), and `architecture/tower-rationale.md`
+- `architecture/INDEX.md` — overview, `decisions/` (19 ADRs — 0019 PROPOSED, awaiting review), and `architecture/tower-rationale.md`
   (why towers matter though mode F is byte-identical — the assurance-dial / evidence / TCB-growth /
   credibility arguments): pipeline, TCB layers, and the decisions behind them.
 - `spec/` (8 + index) — EffIR, effect signatures, reference semantics, **program-logic** (the R14 shallow wp layer), codegen, runtime manifest, error taxonomy, **slice1-status** (built-vs-spec divergences — read first).
@@ -54,7 +54,7 @@ interpreter and the codegen**, so the program proved and the program run cannot 
 - `questions-round1.md` — Phase-1 ambiguity resolution (answered: defaults accepted, NF = measure).
 
 ## File count
-53 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
+54 content/index files. Working artifacts live alongside: `questions-round1.md` (Phase-1 Q&A) and
 `reports/` (premortem `.md`/`.html`, KB quiz, audits).
 
 ## Agent notes

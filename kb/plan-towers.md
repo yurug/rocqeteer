@@ -93,8 +93,9 @@ request-line parser (reuse the redoq RESP experience). ADR with the family desig
   runs under the generated backend, golden suite green; sockets family in manifest + gallery.
 
 ## C5 — Concurrency effects (user-flagged; the capstone)
-**Own ADR before any code** (ADR number when reached). Design constraints fixed *now* so C3/C4 don't
-paint us into a corner:
+**Full design: [[adr-0019-concurrency]] (PROPOSED 2026-07-22, awaiting review).** The constraints below
+were fixed at the 2026-07-19 review so C3/C4 built toward them; the ADR turns them into the schedule-oracle
++ step-machine design and names the load-bearing adequacy proof and its fallback. Constraints:
 1. **One-shot continuations only** — invariant 7 already forbids multi-shot; the concurrency design must
    never need them.
 2. **The reference semantics stays deterministic.** Nondeterminism enters *only* through an explicit
