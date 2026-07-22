@@ -1,0 +1,15 @@
+{
+  "//": "KB usage harness (agentic-dev-kit, spec-driven-dev Step 2d): inject kb/INDEX.md into context at every session start so the routing table is PRESENT, not merely requested. Committable, team-wide.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat \"$CLAUDE_PROJECT_DIR/kb/INDEX.md\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

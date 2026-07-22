@@ -10,17 +10,11 @@ related: [adr-0004-trust-model, adr-0014-wf-checker, runtime-manifest, conv-test
 ---
 # Plan — Phase C: effect towers + application diversity
 
-## Motivation (design review, 2026-07-19)
-User review of rocqeteer + redoq: the op set reads as chosen-for-redoq; the TCB is wide with no descent
-path; low-level effect families are missing; application diversity is needed for the general-purpose
-claim. Resolution: do **not** redesign the primitives in the abstract (redoq is the proof that
-applications reveal the right effects — a vacuum redesign would just pick a *different* wrong level);
-instead fix the **tower discipline** (adr-0016) and let new applications force the low-level families.
-Two scoping decisions made in the same review:
-- **Compiler app rejected** (user): a purely functional compiler is CompCert's territory and exercises
-  none of the effects — no rocqeteer value-add.
-- **Concurrency named an important missing effect family** (user): planned as C5, design constraints
-  fixed below so C3/C4 build toward it.
+## Provenance and scope
+The why lives in the ADRs, not here (register discipline): the 2026-07-19 design review and its
+resolutions — including the rejected compiler application and the user-flagged concurrency family —
+are recorded in [[adr-0016-effect-towers]] (Context and Corrections); the strategic argument for the
+towers is [[tower-rationale]]. This file is the HOW: the phase-C step sequence, scopes, and DoDs.
 
 Each step follows the house pattern: ADR first (where marked), delegated implementation, from-clean
 `make all`, trust-diff review, commit, session-state checkpoint. Complete a step fully before the next

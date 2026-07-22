@@ -22,6 +22,11 @@ CertiKOS; CakeML's verified stack). Hard constraint: invariant 1 — **one EffIR
 not smuggle a handler construct or a second program representation into the IR. Historical note: the
 current op set is not an accident — adr-0006 mandated that the first application drive the effects; the
 tower is the planned correction *after* that bet paid off, not a reversal of it.
+Two scoping decisions from the same review (moved here from the plan per the register discipline —
+procedures carry the how, ADRs the why): a **compiler application was rejected** (user: a purely
+functional compiler is CompCert's territory and exercises none of the effects — no rocqeteer
+value-add), and **concurrency was named the important missing effect family** (user), planned as the
+phase-C capstone with its design constraints pinned in [[plan-towers]] §C5.
 
 ## Decision
 1. **Kernel/derived split (level 1).** The 12 ops partition into a **kernel** — `OGet`/`OPut`/`ODelete`

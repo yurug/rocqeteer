@@ -34,6 +34,11 @@ Checks (E = error, W = warning):
     W-dirty         file has uncommitted changes but `last-updated` is not today
     W-orphan        no other file links to this one (unreachable from the graph)
     W-bare-link     bare-filename backtick ref that resolves nowhere
+    W-register      rationale-shaped section header (why/rationale/motivation/
+                    background/justification) in a `procedure` file — the why
+                    belongs in an ADR that the procedure links
+    W-redefine      a glossary term re-defined outside the glossary file
+                    (define once; content files link the glossary instead)
 
 Exempt from all checks (but still valid link targets): reports/ (generated
 artifacts) and questions-round*.md (working files edited by the user).
@@ -55,6 +60,12 @@ ID_REF_KEYS = ("depends-on", "refines", "related")
 MD_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 BACKTICK_RE = re.compile(r"`([^`\s]+\.md(?:#[^`]*)?)`")
 FENCE_RE = re.compile(r"^(```|~~~)", re.MULTILINE)
+RATIONALE_HEADER_RE = re.compile(
+    r"^#{2,6}\s+(?:why\b|rationale\b|motivation\b|background\b|justification\b)"
+    r"[^\n]*", re.IGNORECASE | re.MULTILINE)
+# Matches the glossary's own definition shape: `- **Term**: ...`. Terms holding
+# placeholder characters ([, <, *) are template scaffolding, not definitions.
+TERM_DEF_RE = re.compile(r"^\s*-\s+\*\*([^*\[\]<>]+)\*\*\s*:", re.MULTILINE)
 
 
 def is_exempt(relpath):
@@ -166,6 +177,15 @@ def main():
 
     today = datetime.date.today().isoformat()
 
+    # -- glossary terms are collected up front so the main pass can flag
+    #    re-definitions (define once: terms live in the glossary only).
+    glossary_terms = {}
+    for rel, text in files.items():
+        fm, _ = parse_frontmatter(text)
+        if fm and fm.get("type") == "glossary":
+            for m in TERM_DEF_RE.finditer(strip_fences(text)):
+                glossary_terms[m.group(1).strip().lower()] = rel
+
     for rel, text in sorted(files.items()):
         # Exempt files (reports, question rounds) are historical artifacts:
         # their links legitimately rot as the KB evolves, so skip them fully.
@@ -211,6 +231,20 @@ def main():
             except ValueError:
                 errors.append((rel, f"E-date: last-updated `{lu}` is not YYYY-MM-DD"))
                 lu = ""
+
+        body = strip_fences(text)
+        if fm.get("type") == "procedure":
+            for m in RATIONALE_HEADER_RE.finditer(body):
+                warnings.append((rel, f"W-register: `{m.group(0).strip()}` in a "
+                                      "procedure file — move the why to an ADR "
+                                      "and link it"))
+        if fm.get("type") != "glossary":
+            for m in TERM_DEF_RE.finditer(body):
+                term = m.group(1).strip()
+                if term.lower() in glossary_terms:
+                    warnings.append((rel, f"W-redefine: `{term}` is defined in "
+                                          f"{glossary_terms[term.lower()]} — "
+                                          "link it instead of re-defining"))
 
         max_lines = int(fm.get("lint-max-lines", DEFAULT_MAX_LINES))
         n = text.count("\n") + 1
