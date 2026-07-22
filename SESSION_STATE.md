@@ -330,3 +330,30 @@ the plan: one-shot continuations, schedule-oracle determinism, cooperative fiber
 recorded-schedule replay; the connection-script oracle is the rehearsed mechanism). Also pending:
 redoq mode-K CI leg + bench measurement at next pin bump; PCountByte (wc -l); mode-K suites over the
 file/socket samples.
+
+## 2026-07-22 — C5 direction set + C5.1 adequacy spike CLOSED
+Concurrency capstone: ADR-0019 PROPOSED then open questions RESOLVED via a laconic decision console
+(artifact). Resolutions (commit 661ddd4): Q1 IR surface = statically-named tm by index (NO IR change —
+the dval-embedding alternative rejected); Q2 channels = OChanMake dynamic creation (spends scope in the
+op set, not the adequacy proof — a next_chan counter); Q3 proof scope = spike CEK on Ret/Bind/Perform,
+commit if adequacy closes else statement-boundary. Aggregate posture: risk-managed.
+**C5.1 SPIKE CLOSED (theories/Cek.v, 4/4 Print Assumptions closed):** the defunctionalized-continuation
+step machine (CEK: config = CEval tm env kont world | CRet outcome kont world; one frame KB for Bind;
+step reuses run verbatim for Perform so effect-agreement is free) is ADEQUATE to big-step run on the
+{Ret,Bind,Perform} fragment. THE theorem cek_run: generalized over an arbitrary continuation k,
+star (CEval t env k w) (CRet (fst (run env t w)) k (snd (run env t w))) — proven by PLAIN STRUCTURAL
+INDUCTION on tm, no fuel, no measure; the star-relation formulation composes by star_trans. Key moves:
+generalize over k (the Bind frame is just a longer k the IH covers); reuse run for Perform; concrete
+fuel-driver instance (ex_machine_matches_run, vm_compute) witnesses the reachability is non-vacuous.
+**DECISION: commit to the CEK machine** — the frame-stack induction did not fight; Match/Repeat/Prim/Fold
+are the scale-up (more frame shapes, same adequacy idea), not new risk. Proof-only file; no codegen/
+runtime/test impact; make rocq clean, no-admitted gate green.
+
+## Exact next step (post-C5.1)
+Scale cek_run to the FULL tm (add frames for Match branches, Repeat fuel, Fold accumulator, Prim);
+prove full-tm adequacy; THEN build the schedule oracle + 5 ops (OSpawn body-by-index / OYield /
+OChanMake / OChanSend / OChanRecv) + world regions (fiber pool, channel table, schedule, transcript,
+next_chan) + Deadlocked outcome; runtime Effect.Deep scheduler; concurrent HTTP server driver with the
+sequential-under-singleton-schedule corollary recovering C4's http_prog_correct. Runtime realizer gets
+its own review once full-tm adequacy is in (ADR-0019 status). Also still pending: redoq mode-K CI leg +
+bench at next pin bump; PCountByte (wc -l); mode-K over file/socket samples.
