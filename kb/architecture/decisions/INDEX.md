@@ -28,7 +28,8 @@ related: [index, arch-overview]
 | `adr-0014-wf-checker.md` | R10 v1 = PROVEN wf checker (scope+arity; kills scope-Dstuck at build time; codegen refuses non-wf); value-shape typing = open phase 2 | R10 design (2026-07-11) |
 | `adr-0015-program-logic.md` | R14 = shallow wp over run (no second semantics): rules per construct/op/prim, keyed store assertions, Repeat/Fold invariant rules, wp_* tactics — the road to forall-quantified specs and the consumer's crown-jewel replay theorem | R14 design (2026-07-13) |
 | `adr-0016-effect-towers.md` | Effect towers: 7-op kernel / 5 derived ops (Expiry, Cache, Journal) discharged by proven elaborations + refinement theorems; mode-K (kernel-only) execution in CI; manifest `discharge` field | design review 2026-07-19 ("chosen-for-redoq" + TCB-descent critiques) |
-| `adr-0017-file-io.md` | **PROPOSED** (C3, awaiting user review): byte-stream file I/O — 4 kernel ops over a pure in-world FS; empty-chunk EOF; modeled errors are values, environmental errors abort tagged; argv/stdio via OAsk + pre-opened fds (zero new ops); full-read/write realizer loop contracts | C3 design (2026-07-19) |
+| `adr-0017-file-io.md` | Byte-stream file I/O (C3, SHIPPED 7d6e72c): 4 kernel ops over a pure in-world FS; empty-chunk EOF; modeled errors are values; inode pinning structural; distinct-inodes runtime-checked, open-inode stability detected; full-read/write loop contracts | C3 design (2026-07-19; reviewed twice, implemented 2026-07-19) |
+| `adr-0018-sockets.md` | **PROPOSED** (C4, awaiting user review): sockets via an injected CONNECTION SCRIPT (the C5 recorded-schedule pattern in miniature); ONE-SHOT half-close-driven connections (the file full-read loop deadlocks otherwise); 4 kernel ops + rider prim PFindSub; TCP contract = the named seam; listener wrapper-owned | C4 design (2026-07-22) |
 
 ## Agent notes
 > Every ADR exists because a specific failure mode would otherwise have killed the project. Before reversing
