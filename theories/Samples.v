@@ -601,6 +601,144 @@ Definition sample_file_missing : tm :=
     (Bind (Perform ORead [VInt 77; VInt 10])
        (Ret (VPair (VVar 1) (VVar 0)))).
 
+
+(* ===== C4 (adr-0018): the sockets samples + the HTTP/1.0 server ============= *)
+
+(** Wire constants: Rocq string literals cannot carry CR/LF, so the delimiters are
+    built from [ascii_of_nat]. *)
+Definition crlf : list ascii := [ascii_of_nat 13; ascii_of_nat 10].
+Definition crlfcrlf : list ascii := crlf ++ crlf.
+Definition sp1 : list ascii := [" "%char].
+Definition get_sp : list ascii := list_ascii_of_string "GET ".
+Definition hbkey : list ascii := list_ascii_of_string "b".
+Definition nobuf : list ascii := list_ascii_of_string "NOBUF".
+
+Definition resp_400 : list ascii :=
+  list_ascii_of_string "HTTP/1.0 400 Bad Request" ++ crlf
+  ++ list_ascii_of_string "Content-Length: 0" ++ crlfcrlf.
+Definition resp_404 : list ascii :=
+  list_ascii_of_string "HTTP/1.0 404 Not Found" ++ crlf
+  ++ list_ascii_of_string "Content-Length: 0" ++ crlfcrlf.
+Definition resp200_pre : list ascii :=
+  list_ascii_of_string "HTTP/1.0 200 OK" ++ crlf
+  ++ list_ascii_of_string "Content-Length: ".
+
+(** Route lookup as a collecting [Fold] over the injected table (ctx = a [DList]
+    of [DPair path body]) — first hit wins; the matched body is returned, or 404/
+    400 built here.  ENTRY convention: the PATH is at de Bruijn 0.  The whole
+    subtree references NOTHING below its entry point, so it splices anywhere. *)
+Definition http_route : tm :=
+  Bind (Perform OAsk [])                                (* tbl·path *)
+    (Bind (Fold (VVar 0) (Ret VNone)
+             (* body env: acc(0)·elem(1)·tbl(2)·path(3) *)
+             (Match (VVar 0)
+                [(PSome, Ret (VSome (VVar 0)))]         (* already found: keep *)
+                (Match (VVar 1)
+                   [(PPair,                             (* b(0)·q(1)·acc·elem·tbl·path *)
+                     Bind (Prim PEqBytes [VVar 1; VVar 5])
+                       (Match (VVar 0)
+                          [(PBool true, Ret (VSome (VVar 1)))]
+                          (Ret VNone)))]
+                   (Ret VNone))))
+       (* f·tbl·path *)
+       (Match (VVar 0)
+          [(PSome,                                      (* body·f·tbl·path *)
+            Bind (Prim PBytesLen [VVar 0])              (* bl·body *)
+              (Bind (Prim PPrintInt [VVar 0])           (* pd·bl·body *)
+                 (Match (VVar 0)
+                    [(PSome,                            (* ds·pd·bl·body *)
+                      Bind (Prim PBytesConcat [VBytes resp200_pre; VVar 0])
+                        (Bind (Prim PBytesConcat [VVar 0; VBytes crlfcrlf])
+                           (Bind (Prim PBytesConcat [VVar 0; VVar 5])
+                              (Ret (VVar 0)))))]
+                    (Ret (VBytes resp_400)))))]        (* print fail: unreachable *)
+          (Ret (VBytes resp_404)))).
+
+(** Parse the accumulated request and COMPUTE the response bytes — a pure value
+    computation with the BUFFER at de Bruijn 0 at entry and no other external
+    references (the connection id never appears here; adr-0018 §6).  Failure
+    arms all yield 400. *)
+Definition http_parse : tm :=
+  Bind (Prim PFindSub [VVar 0; VBytes crlf])            (* f·buf *)
+    (Match (VVar 0)
+       [(PSome,                                         (* i·f·buf *)
+         Bind (Prim PBytesSub [VVar 2; VInt 0; VVar 0]) (* s·i·f·buf *)
+           (Match (VVar 0)
+              [(PSome,                                  (* line·s·i·f·buf *)
+                Bind (Prim PBytesSub [VVar 0; VInt 0; VInt 4])  (* t·line·… *)
+                  (Match (VVar 0)
+                     [(PSome,                           (* g4·t·line·s·i·f·buf *)
+                       Bind (Prim PEqBytes [VVar 0; VBytes get_sp])
+                         (* e·g4·t·line — line at 3 *)
+                         (Match (VVar 0)
+                            [(PBool true,
+                              Bind (Prim PBytesLen [VVar 3])       (* ln·e·g4·t·line *)
+                                (Bind (Prim PSubChecked [VVar 0; VInt 4])
+                                   (* m·ln·e·g4·t·line — line at 5 *)
+                                   (Match (VVar 0)
+                                      [(PSome,          (* n4·m·ln·e·g4·t·line at 6 *)
+                                        Bind (Prim PBytesSub
+                                                [VVar 6; VInt 4; VVar 0])
+                                          (* r·n4·… *)
+                                          (Match (VVar 0)
+                                             [(PSome,   (* rest·r·n4·… *)
+                                               Bind (Prim PFindSub
+                                                       [VVar 0; VBytes sp1])
+                                                 (* fj·rest *)
+                                                 (Match (VVar 0)
+                                                    [(PSome,  (* j·fj·rest at 2 *)
+                                                      Bind (Prim PBytesSub
+                                                              [VVar 2; VInt 0;
+                                                               VVar 0])
+                                                        (* q·j·fj·rest *)
+                                                        (Match (VVar 0)
+                                                           [(PSome, http_route)]
+                                                           (Ret (VBytes resp_400))))]
+                                                    (Ret (VBytes resp_400))))]
+                                             (Ret (VBytes resp_400))))]
+                                      (Ret (VBytes resp_400)))))]
+                            (Ret (VBytes resp_400))))]
+                     (Ret (VBytes resp_400))))]
+              (Ret (VBytes resp_400))))]
+       (Ret (VBytes resp_400))).
+
+(** Handle ONE connection — the id at de Bruijn 0 at entry: reset the buffer,
+    read-to-EOF in [fuel_read] chunks of [ml] (the wc accumulation pattern with
+    bytes instead of counts), parse, send ONE response, close.  [conn] appears
+    exactly at the two final sites. *)
+Definition http_handle (fuel_read : nat) (ml : Z) : tm :=
+  Bind (Perform OPut [VBytes hbkey; VBytes []])         (* u·conn *)
+    (Bind (Repeat fuel_read
+             (Bind (Perform ORecv [VVar 1; VInt ml])    (* ch·u·conn *)
+                (Bind (Perform OGet [VBytes hbkey])     (* cur·ch·u·conn *)
+                   (Match (VVar 0)
+                      [(PSome,                          (* p·cur·ch·u·conn *)
+                        Bind (Prim PBytesConcat [VVar 0; VVar 2])
+                          (Perform OPut [VBytes hbkey; VVar 0]))]
+                      (Perform OThrow [VBytes nobuf])))))
+       (* rep·u·conn *)
+       (Bind (Perform OGet [VBytes hbkey])              (* g·rep·u·conn *)
+          (Match (VVar 0)
+             [(PSome,                                   (* buf·g·rep·u·conn at 4 *)
+               Bind http_parse                          (* resp·buf·…·conn at 5 *)
+                 (Bind (Perform OSend [VVar 5; VVar 0])
+                    (Perform OCloseConn [VVar 6])))]
+             (Perform OThrow [VBytes nobuf])))).
+
+(** The sequential server: a bounded accept loop; script exhaustion (the EAGAIN
+    value) makes an iteration a no-op — total by construction (adr-0018 §2). *)
+Definition http_prog (fuel_conns fuel_read : nat) (ml : Z) : tm :=
+  Repeat fuel_conns
+    (Bind (Perform OAccept [])
+       (Match (VVar 0)
+          [(PTag 0, http_handle fuel_read ml)]
+          (Ret VUnit))).
+
+(** Differential-suite instance (tiny chunks: many EOF boundaries) and the tool
+    instance (16 connections, 32 KiB requests). *)
+Definition sample_http : tm := http_prog 3 8 7.
+Definition sample_http_big : tm := http_prog 16 64 512.
+
 Definition all_programs : list (string * tm) :=
   [ ("prog0"%string, prog0);
     ("sample_delete"%string, sample_delete);
@@ -640,4 +778,6 @@ Definition all_programs : list (string * tm) :=
     ("sample_wc_big"%string, sample_wc_big);
     ("sample_file_rw"%string, sample_file_rw);
     ("sample_file_missing"%string, sample_file_missing);
+    ("sample_http"%string, sample_http);
+    ("sample_http_big"%string, sample_http_big);
     ("demo_prog"%string, demo_prog) ].

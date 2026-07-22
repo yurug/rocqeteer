@@ -34,3 +34,4 @@ val prim_upper_bytes  : Rval.t -> Rval.t
     O(n^2) worst-case, bounded by the consumer's multibulk cap; a deque realizer
     is premature). Fresh spine — the input list is never mutated. *)
 val prim_list_snoc    : Rval.t -> Rval.t -> Rval.t
+val prim_find_sub     : Rval.t -> Rval.t -> Rval.t

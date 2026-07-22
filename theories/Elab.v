@@ -79,7 +79,11 @@ Definition wrel (w wk : world) : Prop :=
   /\ wk.(journal) = w.(journal)
   /\ wk.(files)   = w.(files)
   /\ wk.(fds)     = w.(fds)
-  /\ wk.(next_fd) = w.(next_fd).
+  /\ wk.(next_fd) = w.(next_fd)
+  /\ wk.(conn_script) = w.(conn_script)
+  /\ wk.(socks)   = w.(socks)
+  /\ wk.(conn_log) = w.(conn_log)
+  /\ wk.(next_conn) = w.(next_conn).
 
 (** Simulation of one run result: same outcome, related final worlds. *)
 Definition sim (r rk : outcome * world) : Prop :=
@@ -334,9 +338,9 @@ Lemma elab_get_sim : forall k env w wk, wrel w wk ->
   sim (run env (Perform OGet [k]) w) (run env (elab_get k) wk).
 Proof.
   intros k env w wk H.
-  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk].
-  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf; subst ck nk trk cak jk flk fdtk nfk.
+  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk sck skk lgk nck].
+  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst ck nk trk cak jk flk fdtk nfk sck skk lgk nck.
   unfold elab_get. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -363,9 +367,9 @@ Lemma elab_put_sim : forall k v env w wk, wrel w wk ->
   sim (run env (Perform OPut [k; v]) w) (run env (elab_put k v) wk).
 Proof.
   intros k v env w wk H.
-  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk].
-  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf; subst ck nk trk cak jk flk fdtk nfk.
+  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk sck skk lgk nck].
+  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst ck nk trk cak jk flk fdtk nfk sck skk lgk nck.
   unfold elab_put. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -380,9 +384,9 @@ Lemma elab_delete_sim : forall k env w wk, wrel w wk ->
   sim (run env (Perform ODelete [k]) w) (run env (elab_delete k) wk).
 Proof.
   intros k env w wk H.
-  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk].
-  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf; subst ck nk trk cak jk flk fdtk nfk.
+  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk sck skk lgk nck].
+  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst ck nk trk cak jk flk fdtk nfk sck skk lgk nck.
   unfold elab_delete. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -410,9 +414,9 @@ Lemma elab_getdl_sim : forall k env w wk, wrel w wk ->
   sim (run env (Perform OGetDeadline [k]) w) (run env (elab_getdl k) wk).
 Proof.
   intros k env w wk H.
-  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk].
-  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf; subst ck nk trk cak jk flk fdtk nfk.
+  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk sck skk lgk nck].
+  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst ck nk trk cak jk flk fdtk nfk sck skk lgk nck.
   unfold elab_getdl. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -434,9 +438,9 @@ Lemma elab_setdl_sim : forall k dv env w wk, wrel w wk ->
   sim (run env (Perform OSetDeadline [k; dv]) w) (run env (elab_setdl k dv) wk).
 Proof.
   intros k dv env w wk H.
-  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk].
-  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf; subst ck nk trk cak jk flk fdtk nfk.
+  destruct H as (Hkv & Hctx & Hnow & Htr & Hca & Hjo & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wk as [sk ck nk trk cak jk flk fdtk nfk sck skk lgk nck].
+  cbn in Hkv, Hctx, Hnow, Htr, Hca, Hjo, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst ck nk trk cak jk flk fdtk nfk sck skk lgk nck.
   unfold elab_setdl. cbn.
   (* dispatch on the deadline argument's SHAPE first, like handle_store *)
   destruct (eval_val env dv) as [| b2 | z2 | | dp | e1 e2 | bs2 | tg2 tv2 | ds2 |]
@@ -498,13 +502,17 @@ Qed.
     the two runs are syntactically identical up to the store variables, which such
     an op never reads. *)
 Local Ltac elab_pass H w wk :=
-  destruct H as (Hkv & Hc & Hn & Ht & Hh & Hj & Hfl & Hfd & Hnf);
+  destruct H as (Hkv & Hc & Hn & Ht & Hh & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc);
   destruct w; destruct wk;
-  cbn in Hkv, Hc, Hn, Ht, Hh, Hj, Hfl, Hfd, Hnf; subst;
+  cbn in Hkv, Hc, Hn, Ht, Hh, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst;
   cbn;
   repeat (match goal with
           | |- context [handle_file ?a ?b ?c ?d ?e] =>
               destruct (handle_file a b c d e) as [? [[? ?] ?]]
+          | |- context [handle_sock ?a ?b ?c ?d ?e ?f] =>
+              destruct (handle_sock a b c d e f) as [? [[[? ?] ?] ?]]
+          | |- context [sk_find ?a ?b] => destruct (sk_find a b) as [[? [? ?]] |]
+          | |- context [match ?x with [] => _ | _ :: _ => _ end] => destruct x
           | |- context [eval_val ?e ?v] => destruct (eval_val e v)
           | |- context [Z.eqb ?a ?b] => destruct (Z.eqb a b)
           | |- context [Z.leb ?a ?b] => destruct (Z.leb a b)
@@ -556,6 +564,10 @@ Proof.
   - (* ORead *)     elab_pass H w wk.
   - (* OFWrite *)   elab_pass H w wk.
   - (* OClose *)    elab_pass H w wk.
+  - (* OAccept *)   elab_pass H w wk.
+  - (* ORecv *)     elab_pass H w wk.
+  - (* OSend *)     elab_pass H w wk.
+  - (* OCloseConn *) elab_pass H w wk.
 Qed.
 
 (** Branch dispatch: environments are EQUAL on the two sides (only worlds differ),
@@ -675,8 +687,8 @@ Qed.
 (** From ANY seeded source store (the [observe_full] shape the differential tests
     use): pack the seed on the kernel side. *)
 Corollary elab_seeded : forall t c now s,
-  sim (run [] t        (mkWorld s              c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3))
-      (run [] (elab t) (mkWorld (pack_state s) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3)).
+  sim (run [] t        (mkWorld s              c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1))
+      (run [] (elab t) (mkWorld (pack_state s) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1)).
 Proof.
   intros. apply elab_simulates.
   repeat split; reflexivity.
@@ -686,15 +698,15 @@ Qed.
     stores agree pointwise through packing ([find] is the store's observation —
     [observe]'s [elements] listing is derived from it). *)
 Corollary elab_observe : forall t c now s k,
-  let r  := run [] t        (mkWorld s              c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3) in
-  let rk := run [] (elab t) (mkWorld (pack_state s) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3) in
+  let r  := run [] t        (mkWorld s              c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1) in
+  let rk := run [] (elab t) (mkWorld (pack_state s) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1) in
   fst rk = fst r
   /\ (snd rk).(trace)   = (snd r).(trace)
   /\ (snd rk).(journal) = (snd r).(journal)
   /\ M.find k (snd rk).(kv) = option_map pack_entry (M.find k (snd r).(kv)).
 Proof.
   intros t c now s k.
-  destruct (elab_seeded t c now s) as [Hfst (Hkv & _ & _ & Htr & _ & Hjo & _ & _ & _)].
+  destruct (elab_seeded t c now s) as [Hfst (Hkv & _ & _ & Htr & _ & Hjo & _ & _ & _ & _ & _ & _ & _)].
   repeat split.
   - exact Hfst.
   - exact Htr.
@@ -879,10 +891,10 @@ Definition probe_seeded : state :=
   M.add (string_of_list_ascii probe_key) (DInt 7, Some 100) (M.empty entry).
 
 Theorem elab_precondition_inhabited :
-  wrel (mkWorld probe_seeded DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3)
-       (mkWorld (pack_state probe_seeded) DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3)
+  wrel (mkWorld probe_seeded DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1)
+       (mkWorld (pack_state probe_seeded) DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1)
   /\ fst (run [] (elab (Perform OGet [VBytes probe_key]))
-              (mkWorld (pack_state probe_seeded) DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3))
+              (mkWorld (pack_state probe_seeded) DUnit 100 [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1))
      = ORet (DSome (DInt 7)).
 Proof.
   split.

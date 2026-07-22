@@ -293,3 +293,40 @@ Deferred (recorded in plan-towers §C3): PCountByte prim (wc -l), mode-K suites 
 **C4** per kb/plan-towers.md: sequential HTTP server forcing the sockets family — ADR first (the C3
 chunk discipline reused for ORecv/OSend). Then C5 concurrency (constraints pinned in the plan).
 Also pending: redoq mode-K CI leg + bench measurement at next pin bump.
+
+## 2026-07-22 — C4 DONE: the socket family (ADR-0018) — a proven HTTP/1.0 server over real TCP
+EffIR: +4 ops (OAccept/ORecv/OSend/OCloseConn), world +4 regions (conn_script/socks/conn_log/
+next_conn) — determinism by INJECTION: the connection script is the oracle (the C5 recorded-schedule
+mechanism rehearsed). Ripple absorbed by the C3 playbook (relations +4 equalities, pass-tactic arms
+for handle_sock/sk_find/nil-cons, Journal Opaque). Rider prim PFindSub (17 prims now; manifest +
+diff_prims classes incl. first-match overlap + the CRLF request-line case).
+**The server**: Samples.http_prog — accept loop; per-connection buffer accumulation (the wc pattern
+with bytes); a CONNECTION-FREE parse tree (returns the response value; conn only at send/close —
+the de Bruijn discipline that made it writable); route lookup = a collecting Fold over the ctx table.
+**theories/SockIO.v**: spec http_response/expected_log; vm smokes FIRST (validated every index before
+proving); groundwork (find_sub_bound, bytes_sub_in_range, print_int_in_range); route_fold_correct
+(env-generalized against the fold-env-fixation trap); http_parse_correct (spec and program share
+scrutinees — destruct in lockstep; cbn exclusion lists keep BOTH sides stable); rc_body_step/rc_loop
+(canonical singleton-world shapes, entry-type ascriptions matter); http_handle_correct (folded
+stepping: run_bind_eq/run_match_eq/run_repeat_eq + repeat_loop_S — NEVER let cbn unfold run/
+repeat_loop; fix-normal-form fights are unwinnable); http_accept_loop; **http_prog_correct** (GENERAL:
+every table/script/fuels; ml universally quantified). Anti-vacuity: Content-Length+1 mutant rejected/
+plausible; hypothesis inhabitance over the smoke scripts.
+**Runtime Rkv.Sockio**: one-shot half-close contract (adr-0018 §1 — the file full-read loop DEADLOCKS
+on sockets otherwise; keep-alive deferred to C5); recv/send full loops; SO_RCVTIMEO liveness backstop
+(stalled client -> loud Environmental, never a hang); accept on wrapper-closed listener = the
+script-exhausted VALUE (the honest live realization of exhaustion); interposable sys.
+**tests/diff_sock**: record-and-replay over REAL loopback TCP — forked scripted clients (send,
+shutdown-write, read-to-EOF), generated server in the parent; per-connection outputs == reference
+transcript; classes S1-S8 + FI1 (short-recv unchanged) + FI2 (timeout backstop) + S7 (pre-closed
+listener + empty script = the exhausted path). Harness contract: script length == accept fuel.
+**tools/rhttpd**: bind/listen wrapper + the proven core (sample_http_big); smoke-tested with a real
+Python HTTP client (200 + body ✓, 404 ✓). Manifest: Socket family + Runtime_Sock_script_faithful /
+SockRecv_full / SockSend_full; README 20 ops / 10 families; gallery Sockets.v; spec section.
+
+## Exact next step (post-C4)
+**C5** per kb/plan-towers.md: the concurrency effect family — own ADR first (constraints pinned in
+the plan: one-shot continuations, schedule-oracle determinism, cooperative fibers + channels,
+recorded-schedule replay; the connection-script oracle is the rehearsed mechanism). Also pending:
+redoq mode-K CI leg + bench measurement at next pin bump; PCountByte (wc -l); mode-K suites over the
+file/socket samples.

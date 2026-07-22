@@ -82,6 +82,39 @@ validated_by = ["diff_file (short-write interposition via the sys seam)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[effect."Socket"]
+ocaml_module = "Rkv.Sockio"
+ops          = ["Accept", "Recv", "Send", "CloseConn"]
+backend      = "Unix TCP behind an Effect.Deep handler (no C stubs); ONE-SHOT half-close-driven connections (adr-0018 §1); recv/send full loops discharge partial ops + EINTR; a per-connection RECEIVE TIMEOUT is the liveness backstop (a client that never half-closes aborts loudly, the server never hangs); listener setup wrapper-owned; accept on a wrapper-closed listener returns the reference script-exhausted VALUE Tag(1,11)"
+result_types = "accept: Tag(0,conn)|Tag(1,11=input done); recv: Bytes chunk (EMPTY=half-close)|Tag(1,9); send: Unit|Tag(1,9); close: Bool"
+discharge    = "kernel-v1 — syscall-backed, irreducible at this level (adr-0016 §6; adr-0018)"
+tests        = ["diff_sock"]
+owner        = "yann"
+
+[assumption."Runtime_Sock_script_faithful"]
+statement    = "the reference connection script IS what the clients sent: within a connection, TCP's contract (ordered, reliable, complete-to-EOF byte stream) carries it; across connections, accept order defines script order. Validated by RECORD-AND-REPLAY in the differential suite (the same scripted bytes driven through real loopback TCP and through observe_sock), not blindly trusted"
+reference    = "EffIR.world.conn_script consumed by handle_sock OAccept in order"
+fast         = "Sockio.run over Unix.accept/recv/send"
+validated_by = ["diff_sock (scripted one-shot clients over real TCP; per-connection outputs compared in order)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_SockRecv_full"]
+statement    = "recv conn maxlen returns EXACTLY min(maxlen, remaining) bytes; the loop terminates BECAUSE of the one-shot half-close contract (adr-0018 §1) — the reference file_chunk realized verbatim; the receive-timeout backstop converts contract violations into loud environmental aborts"
+reference    = "EffIR.handle_sock ORecv (file_chunk)"
+fast         = "Sockio.recv_full loop + SO_RCVTIMEO"
+validated_by = ["diff_sock (short-recv interposition unchanged; stalled-client timeout case)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
+[assumption."Runtime_SockSend_full"]
+statement    = "send conn bytes delivers ALL bytes (partial sends + EINTR discharged in the loop); short sends do not exist at the IR level"
+reference    = "EffIR.handle_sock OSend (out ++ bytes)"
+fast         = "Sockio.send_full loop"
+validated_by = ["diff_sock (responses received whole, incl. 2000-byte bodies)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 [effect."Time"]
 ocaml_module = "Rkv.Time"
 ops          = ["Now"]
@@ -361,6 +394,15 @@ raises       = []
 pre          = "args are (Rval.List, any Rval.t element) or mismatch"
 post         = "= rval_of_dval (apply_prim PListSnoc args); Rval.List (vs @ [v]) — the element appended at the END (order-preserving; ANY shape incl. nested List/Tag, never concatenated); Rval.None if the first arg is not a List. O(n) append per snoc, DELIBERATE (mirrors the reference exactly): the collecting-fold consumer pattern is O(n^2) worst-case only on huge argv, bounded in practice by the consumer's multibulk cap — a deque realizer is premature. Fresh spine; the input list is never mutated"
 tests        = ["diff_prims", "diff_fold"]
+owner        = "yann"
+
+[primitive."prim_find_sub"]
+ocaml_symbol = "Prims.prim_find_sub"
+purity       = "pure"
+raises       = []
+pre          = "true (total; shape mismatch -> None)"
+post         = "Bytes hay, Bytes needle -> Some (Int first-index) | None; empty needle -> Some 0; FIRST match wins (reference EffIR.find_sub — the C4 rider prim, adr-0018 §6)"
+tests        = ["diff_prims"]
 owner        = "yann"
 
 [assumption."Runtime_Prims_refines"]

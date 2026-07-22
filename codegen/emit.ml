@@ -150,6 +150,11 @@ let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   | ORead,   [f; n]  -> Printf.sprintf "(Fileio.read %s %s)" (emit_val env f) (emit_val env n)
   | OFWrite, [f; b]  -> Printf.sprintf "(Fileio.write %s %s)" (emit_val env f) (emit_val env b)
   | OClose,  [f]     -> Printf.sprintf "(Fileio.close_ %s)" (emit_val env f)
+  (* C4 (adr-0018): the socket family *)
+  | OAccept, []      -> "(Sockio.accept ())"
+  | ORecv,   [c; n]  -> Printf.sprintf "(Sockio.recv %s %s)" (emit_val env c) (emit_val env n)
+  | OSend,   [c; b]  -> Printf.sprintf "(Sockio.send %s %s)" (emit_val env c) (emit_val env b)
+  | OCloseConn, [c]  -> Printf.sprintf "(Sockio.close_conn %s)" (emit_val env c)
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
 
 (* [emit_branch] compiles one branch (adr-0008 §Decision 4 chaining scheme).
@@ -237,6 +242,8 @@ and emit_prim (env : string list) (p : prim) (args : coq_val list) : string =
                                   (emit_val env a)
   | PListSnoc,    [a; b]    -> Printf.sprintf "(Prims.prim_list_snoc %s %s)"
                                   (emit_val env a) (emit_val env b)
+  | PFindSub,     [a; b]    -> Printf.sprintf "(Prims.prim_find_sub %s %s)"
+                                 (emit_val env a) (emit_val env b)
   | _ -> raise (Codegen_error "Prim applied at wrong arity")
 
 and emit_tm (env : string list) (t : tm) : string =

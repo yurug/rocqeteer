@@ -18,7 +18,7 @@ Local Open Scope Z_scope.
 (** Run [sample_cache] from an initial cache [initc] (empty store/ctx/trace, now = 0);
     read the store entry at key "1". *)
 Definition run_cache (initc : memo) : option entry :=
-  let '(_, w) := run [] sample_cache (mkWorld (M.empty entry) DUnit 0 [] initc [] (M.empty (list ascii)) [] 3) in
+  let '(_, w) := run [] sample_cache (mkWorld (M.empty entry) DUnit 0 [] initc [] (M.empty (list ascii)) [] 3 [] [] [] 1) in
   M.find (string_of_list_ascii key1) w.(kv).
 
 (** MISS (empty cache): compute succ zero = 1, write it at key "1". *)

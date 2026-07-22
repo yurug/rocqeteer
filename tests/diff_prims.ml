@@ -339,7 +339,10 @@ let direct_prim_pass () =
       | 3 -> gen_list_val ()   (* nested list element *)
       | _ -> Rkv.Rval.Unit
     in
-    check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [lv; sv]
+    check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [lv; sv];
+    (* C4 rider prim (adr-0018): find_sub over random hay/needle byte pairs *)
+    check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub)
+      [Rkv.Rval.Bytes (gen_bytes ()); Rkv.Rval.Bytes (gen_bytes ())]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -509,7 +512,36 @@ let direct_prim_pass () =
   (* shape mismatches: both sides must agree on None *)
   check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [zi 0; zi 1];
   check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc)
-    [Rkv.Rval.Bytes (Bytes.of_string "k"); zi 1]
+    [Rkv.Rval.Bytes (Bytes.of_string "k"); zi 1];
+  (* C4 rider prim (adr-0018): PFindSub fixed adversarial cases — VALUE asserted so
+     the FIRST-match rule and boundary indices are pinned on both sides. *)
+  let bsv s = Rkv.Rval.Bytes (Bytes.of_string s) in
+  let assert_find h n expect what =
+    let r = ref_prim E.PFindSub [bsv h; bsv n]
+    and f = Rkv.Prims.prim_find_sub (bsv h) (bsv n) in
+    if not (Rkv.Rval.equal r expect && Rkv.Rval.equal f expect) then begin
+      incr prim_fails;
+      Printf.printf "FIND_SUB VALUE FAIL (RSEED=%d) %s: expected %s, ref=%s fast=%s\n"
+        seed what (Rkv.Rval.to_string expect)
+        (Rkv.Rval.to_string r) (Rkv.Rval.to_string f)
+    end
+  in
+  let found i = Rkv.Rval.Some (zi i) in
+  assert_find "hello" "he" (found 0) "needle at start";
+  assert_find "hello" "lo" (found 3) "needle at end";
+  assert_find "hello" "x" Rkv.Rval.None "absent";
+  assert_find "hello" "" (found 0) "empty needle -> 0";
+  assert_find "" "" (found 0) "empty in empty -> 0";
+  assert_find "" "a" Rkv.Rval.None "nonempty in empty";
+  assert_find "hello" "hello" (found 0) "needle == hay";
+  assert_find "hello" "hellox" Rkv.Rval.None "needle longer than hay";
+  assert_find "aaaa" "aa" (found 0) "overlapping candidates: FIRST wins";
+  assert_find "abcabc" "cab" (found 2) "interior straddling occurrence";
+  assert_find "a\x00b" "\x00" (found 1) "NUL needle";
+  (* the request-line shape the C4 server parses *)
+  assert_find "GET /p HTTP/1.0\r\nHost: x\r\n\r\n" "\r\n" (found 15) "first CRLF";
+  check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub) [zi 0; bsv "x"];
+  check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub) [bsv "x"; Rkv.Rval.Unit]
 
 (* --- R12 pipeline pass: sample_ci_dispatch ---------------------------------- *)
 (* Case-insensitive dispatch through the FULL reference-vs-generated pipeline: the
@@ -671,7 +703,7 @@ let () =
     !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16
     !cover_c1 !cover_c2 !cover_c3 !cover_c4 !cover_c5;
   if !fails = 0 && !prim_fails = 0 && !ci_fails = 0 && cov_ok && ci_cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 16 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5 + list snoc order pinned); coverage asserted"
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 17 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5 + list snoc order pinned); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";

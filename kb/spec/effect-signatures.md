@@ -95,3 +95,17 @@ Modeled failures are tagged VALUES; environmental failures live in the realizer
 (`Rkv.Fileio`) behind the named assumptions `Runtime_FS_distinct_inodes` (runtime-checked),
 `Runtime_FS_open_inode_stable` (detection), `Runtime_FileRead_full`/`Runtime_FileWrite_full`.
 Flagship theorems: `FileIO.chunking_invariance`, `FileIO.wc_prog_correct`.
+
+## The socket family (C4, adr-0018-sockets — added 2026-07-22)
+| Op | Args | Result | Notes |
+|----|------|--------|-------|
+| `OAccept` | `[]` | `DTag 0 (DInt conn)` or `DTag 1 (DInt 11)` (script exhausted — EAGAIN value) | pops the injected connection script; ids from 1 |
+| `ORecv` | `[conn : DInt; maxlen : DInt >= 1]` | `DBytes chunk` (EMPTY = the client's half-close) or `DTag 1 (DInt 9)` | `file_chunk` over the connection's scripted input |
+| `OSend` | `[conn : DInt; bytes : DBytes]` | `DUnit` or `DTag 1 (DInt 9)` | appends to the connection's output |
+| `OCloseConn` | `[conn : DInt]` | `DBool` | finalizes into the transcript `conn_log` — THE observable |
+
+World regions: `conn_script`, `socks`, `conn_log`, `next_conn`. ONE-SHOT half-close-driven
+connections (adr-0018 §1). Realizer `Rkv.Sockio` behind `Runtime_Sock_script_faithful`
+(record-and-replay validated), `Runtime_SockRecv_full`/`Runtime_SockSend_full`, and the
+receive-timeout liveness backstop. Flagship theorem: `SockIO.http_prog_correct`.
+Rider prim (adr-0009 discipline): `PFindSub` — first-occurrence substring search.

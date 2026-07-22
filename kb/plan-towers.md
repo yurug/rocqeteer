@@ -82,7 +82,14 @@ chunked reads so programs handle short reads) plus process context (`OArgv`, `OE
 - **DoD:** the tool proven (spec: e.g. wc counts = reference fold over the byte stream), extracted,
   generated, differentially green vs coreutils; new families in manifest + gallery + README.
 
-## C4 — Application 3: a sequential HTTP server
+## C4 — Application 3: a sequential HTTP server — ✅ DONE 2026-07-22
+Delivered per ADR-0018: the socket family (connection-script oracle; one-shot half-close contract —
+the file full-read loop deadlocks otherwise, so keep-alive waits for C5); `SockIO.http_prog_correct`
+(GENERAL: every table, script, covering fuels; chunk size universally quantified); rider prim
+PFindSub; `tools/rhttpd` (proven core serving real HTTP over TCP); `diff_sock` record-and-replay over
+real loopback TCP incl. the short-recv seam and the timeout backstop; manifest + TCB + gallery.
+
+### (original scope, for the record)
 Forces **sockets**: `OAccept`/`ORecvChunk`/`OSendChunk`/`OCloseConn`. HTTP/1.0 subset (GET, fixed
 routes), parsing built from the existing bytes prims (the C3 chunk discipline reused). **Explicitly
 sequential** — accept, handle, close, loop via `Repeat`; the reference semantics stays deterministic;

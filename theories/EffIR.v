@@ -150,7 +150,8 @@ Inductive val : Type :=
 Inductive op : Type :=
   | OGet | OPut | ODelete | OGetDeadline | OSetDeadline | ONow
   | OThrow | OAsk | OTrace | OCacheGet | OCachePut | OJournal
-  | OOpen | ORead | OFWrite | OClose.
+  | OOpen | ORead | OFWrite | OClose
+  | OAccept | ORecv | OSend | OCloseConn.
 
 (** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
     All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that
@@ -173,7 +174,8 @@ Inductive prim : Type :=
 | PDivFloor     (** DInt a, DInt b -> DNone if b = 0, else DSome (DInt (a / b)) — FLOOR (R9) *)
 | PLowerBytes   (** DBytes bs -> DBytes (ASCII fold: 65-90 shifted +32; every other byte unchanged) (R12) *)
 | PUpperBytes   (** DBytes bs -> DBytes (ASCII fold: 97-122 shifted -32; every other byte unchanged) (R12) *)
-| PListSnoc.    (** DList vs, v -> DList (vs ++ [v]) — v is ANY dval; non-DList first arg -> DNone (R13) *)
+| PListSnoc     (** DList vs, v -> DList (vs ++ [v]) — v is ANY dval; non-DList first arg -> DNone (R13) *)
+| PFindSub.     (** DBytes hay, DBytes needle -> DSome (DInt first-index) | DNone (absent); empty needle -> DSome 0 (C4 rider, adr-0018) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -377,6 +379,23 @@ Definition apply_upper_bytes (bs : list ascii) : dval :=
 
 (** ** [apply_prim p args]: the TOTAL reference definition of each primitive.
     Arity or shape mismatch → DNone (adr-0009 §Decision 2). *)
+(** [is_prefix n h]: is [n] a prefix of [h]?  [find_sub n h]: the FIRST index where
+    [n] occurs in [h] ([Some 0] for the empty needle — every position matches, the
+    first wins).  The C4 rider prim's reference (adr-0018 §6). *)
+Fixpoint is_prefix (n h : list ascii) : bool :=
+  match n, h with
+  | [], _            => true
+  | _ :: _, []       => false
+  | c :: n', d :: h' => ascii_eqb c d && is_prefix n' h'
+  end.
+
+Fixpoint find_sub (n h : list ascii) : option nat :=
+  if is_prefix n h then Some O
+  else match h with
+       | []      => None
+       | _ :: h' => option_map S (find_sub n h')
+       end.
+
 Definition apply_prim (p : prim) (args : list dval) : dval :=
   match p, args with
   | PAddChecked,  [DInt a; DInt b]     => apply_add_checked a b
@@ -395,6 +414,11 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
   | PLowerBytes,  [DBytes bs]          => apply_lower_bytes bs
   | PUpperBytes,  [DBytes bs]          => apply_upper_bytes bs
   | PListSnoc,    [DList vs; v]        => DList (vs ++ [v])   (* append at the END (R13) *)
+  | PFindSub,     [DBytes h; DBytes n] =>
+      match find_sub n h with
+      | Some i => DSome (DInt (Z.of_nat i))
+      | None   => DNone
+      end
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 
@@ -546,6 +570,33 @@ Fixpoint fd_remove (fd : Z) (l : fdtab) : fdtab :=
 Definition file_chunk (cs : list ascii) (off maxlen : Z) : list ascii :=
   firstn (Z.to_nat maxlen) (skipn (Z.to_nat off) cs).
 
+(** ** The socket region (C4, adr-0018): connections are SCRIPTED — the world holds
+    the pending per-connection input streams (the adr-0011 injection pattern; the C5
+    recorded-schedule mechanism in miniature).  An open connection is (input, (read
+    offset, accumulated output)); closed connections move, in close order, to the
+    transcript [conn_log] — THE observable of a server run. *)
+Definition sdesc : Type := (list ascii * (Z * list ascii))%type.
+Definition stab  : Type := list (Z * sdesc).
+Definition ctranscript : Type := list (Z * (list ascii * list ascii)).
+
+Fixpoint sk_find (c : Z) (l : stab) : option sdesc :=
+  match l with
+  | []           => None
+  | (n, e) :: l' => if Z.eqb n c then Some e else sk_find c l'
+  end.
+
+Fixpoint sk_set (c : Z) (e : sdesc) (l : stab) : stab :=
+  match l with
+  | []            => [(c, e)]
+  | (n, e') :: l' => if Z.eqb n c then (n, e) :: l' else (n, e') :: sk_set c e l'
+  end.
+
+Fixpoint sk_remove (c : Z) (l : stab) : stab :=
+  match l with
+  | []            => []
+  | (n, e') :: l' => if Z.eqb n c then l' else (n, e') :: sk_remove c l'
+  end.
+
 Definition opt_to_dval (o : option dval) : dval :=
   match o with Some v => DSome v | None => DNone end.
 
@@ -585,22 +636,35 @@ Record world : Type := mkWorld {
   files   : fsys;       (* C3 (adr-0017): path -> byte contents *)
   fds     : fdtab;      (* C3: open descriptors *)
   next_fd : Z;          (* C3: next fd number OOpen hands out *)
+  conn_script : list (list ascii);  (* C4 (adr-0018): pending connection inputs *)
+  socks   : stab;       (* C4: open connections *)
+  conn_log : ctranscript;  (* C4: finished connections, in close order — the observable *)
+  next_conn : Z;        (* C4: next conn id OAccept hands out *)
 }.
 
 Definition set_kv    (w : world) (m : state)     : world :=
   mkWorld m w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal)
-          w.(files) w.(fds) w.(next_fd).
+          w.(files) w.(fds) w.(next_fd)
+          w.(conn_script) w.(socks) w.(conn_log) w.(next_conn).
 Definition set_trace (w : world) (l : list dval) : world :=
   mkWorld w.(kv) w.(ctx) w.(now_ms) l w.(cache) w.(journal)
-          w.(files) w.(fds) w.(next_fd).
+          w.(files) w.(fds) w.(next_fd)
+          w.(conn_script) w.(socks) w.(conn_log) w.(next_conn).
 Definition set_cache (w : world) (c : memo)      : world :=
   mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) c w.(journal)
-          w.(files) w.(fds) w.(next_fd).
+          w.(files) w.(fds) w.(next_fd)
+          w.(conn_script) w.(socks) w.(conn_log) w.(next_conn).
 Definition set_journal (w : world) (l : list (Z * dval)) : world :=
   mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) l
-          w.(files) w.(fds) w.(next_fd).
+          w.(files) w.(fds) w.(next_fd)
+          w.(conn_script) w.(socks) w.(conn_log) w.(next_conn).
 Definition set_io (w : world) (fl : fsys) (ft : fdtab) (nf : Z) : world :=
-  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal) fl ft nf.
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal) fl ft nf
+          w.(conn_script) w.(socks) w.(conn_log) w.(next_conn).
+Definition set_sock (w : world) (sc : list (list ascii)) (st : stab)
+                    (lg : ctranscript) (nc : Z) : world :=
+  mkWorld w.(kv) w.(ctx) w.(now_ms) w.(trace) w.(cache) w.(journal)
+          w.(files) w.(fds) w.(next_fd) sc st lg nc.
 
 (** ** Pure store handler over the map: the reference semantics of the store operations
     (adr-0011 §Decision 2 — the op table, verbatim):
@@ -699,6 +763,50 @@ Definition handle_file (o : op) (args : list dval) (fl : fsys) (ft : fdtab) (nf 
   | _, _ => (Dstuck, (fl, ft, nf))
   end.
 
+(** ** The pure socket handler (C4, adr-0018 §Decision 2 — the op table, verbatim):
+      OAccept    []            -> DTag 0 (DInt conn) | DTag 1 (DInt 11)  (script exhausted, EAGAIN value)
+      ORecv      [conn; maxlen>=1] -> DBytes chunk (EMPTY = the client's half-close)
+                                      | DTag 1 (DInt 9)                  (bad conn value)
+      OSend      [conn; bytes] -> DUnit | DTag 1 (DInt 9)
+      OCloseConn [conn]        -> DBool (double-close = false); finalizes into the transcript
+    Malformed args are [Dstuck].  One-shot half-close-driven connections (adr-0018
+    §Decision 1): the same [file_chunk] discipline as [ORead]. *)
+Definition handle_sock (o : op) (args : list dval)
+    (sc : list (list ascii)) (st : stab) (lg : ctranscript) (nc : Z)
+  : dval * (list (list ascii) * stab * ctranscript * Z) :=
+  match o, args with
+  | OAccept, [] =>
+      match sc with
+      | []        => (DTag 1 (DInt 11), (sc, st, lg, nc))
+      | inp :: sc' =>
+          (DTag 0 (DInt nc), (sc', sk_set nc (inp, (0, [])) st, lg, Z.succ nc))
+      end
+  | ORecv, [DInt c; DInt maxlen] =>
+      if Z.leb maxlen 0 then (Dstuck, (sc, st, lg, nc))
+      else
+        match sk_find c st with
+        | Some (inp, (off, out)) =>
+            let chunk := file_chunk inp off maxlen in
+            (DBytes chunk,
+             (sc, sk_set c (inp, (off + Z.of_nat (List.length chunk), out)) st,
+              lg, nc))
+        | None => (DTag 1 (DInt 9), (sc, st, lg, nc))
+        end
+  | OSend, [DInt c; DBytes bs] =>
+      match sk_find c st with
+      | Some (inp, (off, out)) =>
+          (DUnit, (sc, sk_set c (inp, (off, out ++ bs)) st, lg, nc))
+      | None => (DTag 1 (DInt 9), (sc, st, lg, nc))
+      end
+  | OCloseConn, [DInt c] =>
+      match sk_find c st with
+      | Some (inp, (_, out)) =>
+          (DBool true, (sc, sk_remove c st, lg ++ [(c, (inp, out))], nc))
+      | None => (DBool false, (sc, st, lg, nc))
+      end
+  | _, _ => (Dstuck, (sc, st, lg, nc))
+  end.
+
 (** ** The reference interpreter, threading one [world]. Structurally recursive on [t],
     hence total. [Bind] short-circuits on abort ([OErr]); [OThrow e] aborts; [OAsk] reads
     [ctx]; [OTrace v] appends [v] to the log; KV ops update [kv]. *)
@@ -740,6 +848,11 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
           (* C3 (adr-0017): the file region *)
           let '(r, (fl', ft', nf')) := handle_file o vs w.(files) w.(fds) w.(next_fd) in
           (ORet r, set_io w fl' ft' nf')
+      | OAccept | ORecv | OSend | OCloseConn =>
+          (* C4 (adr-0018): the socket region *)
+          let '(r, (sc', st', lg', nc')) :=
+            handle_sock o vs w.(conn_script) w.(socks) w.(conn_log) w.(next_conn) in
+          (ORet r, set_sock w sc' st' lg' nc')
       | _      => let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in (ORet r, set_kv w s')
       end
   | Match scrut branches default =>
@@ -808,7 +921,8 @@ Fixpoint run (env : list dval) (t : tm) (w : world) : outcome * world :=
 (** Initial world: empty store, the given [c] context, the run's instant [now], empty
     trace, empty cache, empty journal. *)
 Definition init_world (c : dval) (now : Z) : world :=
-  mkWorld (M.empty entry) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3.
+  mkWorld (M.empty entry) c now [] (M.empty dval) [] (M.empty (list ascii)) [] 3
+          [] [] [] 1.
 
 Definition run_top (c : dval) (now : Z) (t : tm) : outcome * world :=
   run [] t (init_world c now).
@@ -831,14 +945,24 @@ Definition observe (c : dval) (now : Z) (t : tm)
 Definition observe_full (c : dval) (now : Z) (s : state) (t : tm)
   : outcome * list (string * entry) * list dval * list (Z * dval) :=
   let '(r, w) := run [] t (mkWorld s c now [] (M.empty dval) []
-                             (M.empty (list ascii)) [] 3) in
+                             (M.empty (list ascii)) [] 3 [] [] [] 1) in
   (r, live_elements now w.(kv), rev w.(trace), rev w.(journal)).
 
 (** ** C3 (adr-0017) test entry points: run from a SEEDED file system (empty
     store, instant 0, fds empty, next_fd 3 — the canonical io-initial world), and
     observe the final file region (sorted by path, like the store observable). *)
 Definition run_file (c : dval) (fl : fsys) (t : tm) : outcome * world :=
-  run [] t (mkWorld (M.empty entry) c 0 [] (M.empty dval) [] fl [] 3).
+  run [] t (mkWorld (M.empty entry) c 0 [] (M.empty dval) [] fl [] 3 [] [] [] 1).
+
+(** C4 (adr-0018) test entry point: run against a CONNECTION SCRIPT and observe the
+    transcript — (conn id, (input script, output)) in close order. *)
+Definition run_sock (c : dval) (sc : list (list ascii)) (t : tm) : outcome * world :=
+  run [] t (mkWorld (M.empty entry) c 0 [] (M.empty dval) []
+              (M.empty (list ascii)) [] 3 sc [] [] 1).
+
+Definition observe_sock (c : dval) (sc : list (list ascii)) (t : tm)
+  : outcome * ctranscript :=
+  let '(r, w) := run_sock c sc t in (r, w.(conn_log)).
 
 Definition observe_file (c : dval) (fl : fsys) (t : tm)
   : outcome * list (string * list ascii) :=

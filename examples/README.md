@@ -16,6 +16,7 @@ where the *general* laws (∀-quantified, with frame clauses, mutants, and inhab
 | **Cache** | `OCacheGet` `OCachePut` | memoization; the cache is invisible to the observable *by construction* | [`Memo.v`](Memo.v) | [`theories/Cache.v`](../theories/Cache.v) |
 | **Journal** | `OJournal` | timestamped durability log; journaling never changes results (the frame law); replay | [`Journaling.v`](Journaling.v) | [`theories/Journal.v`](../theories/Journal.v) |
 | **Files** | [`Files.v`](Files.v) | write-read roundtrip; exact counts at EOF chunk boundaries; modeled errors as values (`wc_prog_correct` / `chunking_invariance` in [`theories/FileIO.v`](../theories/FileIO.v)) |
+| **Sockets** | [`Sockets.v`](Sockets.v) | scripted connections; the proven HTTP/1.0 server at its boundary corners (`http_prog_correct` in [`theories/SockIO.v`](../theories/SockIO.v)) |
 | **Combinators** (not effects) | `Match` `Repeat` `Fold` + 16 checked prims | tagged-union dispatch, bounded loops, argv-style folds, soft-failing arithmetic/parsing | [`Combinators.v`](Combinators.v) | [`theories/Recur.v`](../theories/Recur.v), [`theories/Fold.v`](../theories/Fold.v), [`theories/Prims.v`](../theories/Prims.v) |
 
 Beyond instances: the **program logic** (`theories/Logic.v`, a shallow weakest-precondition layer over

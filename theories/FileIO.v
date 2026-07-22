@@ -249,7 +249,8 @@ Definition fio_path : list ascii := list_ascii_of_string "f".
 
 Definition fio_world (cs : list ascii) : world :=
   mkWorld (M.empty entry) (DBytes fio_path) 0 [] (M.empty dval) []
-          (M.add (string_of_list_ascii fio_path) cs (M.empty (list ascii))) [] 3.
+          (M.add (string_of_list_ascii fio_path) cs (M.empty (list ascii))) [] 3
+          [] [] [] 1.
 
 Definition bytes_n (n : nat) : list ascii := repeat "a"%char n.
 

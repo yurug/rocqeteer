@@ -60,6 +60,10 @@ Definition op_arity (o : op) : nat :=
   | ORead        => 2
   | OFWrite      => 2
   | OClose       => 1
+  | OAccept      => 0
+  | ORecv        => 2
+  | OSend        => 2
+  | OCloseConn   => 1
   end%nat.
 
 (** Exact arity of each primitive (the adr-0009/0012 registry). The exhaustive match
@@ -82,6 +86,7 @@ Definition prim_arity (p : prim) : nat :=
   | PLowerBytes  => 1
   | PUpperBytes  => 1
   | PListSnoc    => 2
+  | PFindSub     => 2
   end%nat.
 
 (** Binder count of each depth-1 pattern — exactly the length of the payload list
@@ -439,6 +444,11 @@ Fixpoint run_checked (env : list dval) (t : tm) (w : world) : option (outcome * 
                     let '(r, (fl', ft', nf')) :=
                       handle_file o vs w.(files) w.(fds) w.(next_fd) in
                     (ORet r, set_io w fl' ft' nf')
+                | OAccept | ORecv | OSend | OCloseConn =>
+                    let '(r, (sc', st', lg', nc')) :=
+                      handle_sock o vs w.(conn_script) w.(socks)
+                        w.(conn_log) w.(next_conn) in
+                    (ORet r, set_sock w sc' st' lg' nc')
                 | _ =>
                     let '(r, s') := handle_store w.(now_ms) o vs w.(kv) in
                     (ORet r, set_kv w s')

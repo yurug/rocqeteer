@@ -90,7 +90,11 @@ Definition nsrel (w wm : world) : Prop :=
   /\ wm.(journal) = []
   /\ wm.(files)   = w.(files)
   /\ wm.(fds)     = w.(fds)
-  /\ wm.(next_fd) = w.(next_fd).
+  /\ wm.(next_fd) = w.(next_fd)
+  /\ wm.(conn_script) = w.(conn_script)
+  /\ wm.(socks)   = w.(socks)
+  /\ wm.(conn_log) = w.(conn_log)
+  /\ wm.(next_conn) = w.(next_conn).
 
 Definition sim_ns (r rm : outcome * world) : Prop :=
   fst rm = fst r /\ nsrel (snd r) (snd rm).
@@ -375,9 +379,9 @@ Lemma ns_get_sim : forall k env w wm, nsrel w wm ->
   sim_ns (run env (Perform OGet [k]) w) (run env (ns_get k) wm).
 Proof.
   intros k env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_get. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -392,9 +396,9 @@ Lemma ns_delete_sim : forall k env w wm, nsrel w wm ->
   sim_ns (run env (Perform ODelete [k]) w) (run env (ns_delete k) wm).
 Proof.
   intros k env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_delete. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -410,9 +414,9 @@ Lemma ns_getdl_sim : forall k env w wm, nsrel w wm ->
   sim_ns (run env (Perform OGetDeadline [k]) w) (run env (ns_getdl k) wm).
 Proof.
   intros k env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_getdl. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -426,9 +430,9 @@ Lemma ns_put_sim : forall k v env w wm, nsrel w wm ->
   sim_ns (run env (Perform OPut [k; v]) w) (run env (ns_put k v) wm).
 Proof.
   intros k v env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_put. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -442,9 +446,9 @@ Lemma ns_setdl_sim : forall k dv env w wm, nsrel w wm ->
   sim_ns (run env (Perform OSetDeadline [k; dv]) w) (run env (ns_setdl k dv) wm).
 Proof.
   intros k dv env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_setdl. cbn.
   destruct (eval_val env k) as [| b | z | | dvk | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -481,9 +485,9 @@ Lemma ns_cache_get_sim : forall k env w wm, nsrel w wm ->
   sim_ns (run env (Perform OCacheGet [k]) w) (run env (ns_cache_get k) wm).
 Proof.
   intros k env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_cache_get. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -500,9 +504,9 @@ Lemma ns_cache_put_sim : forall k v env w wm, nsrel w wm ->
   sim_ns (run env (Perform OCachePut [k; v]) w) (run env (ns_cache_put k v) wm).
 Proof.
   intros k v env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_cache_put. cbn.
   destruct (eval_val env k) as [| b | z | | dv | d1 d2 | kb | tg tv | ds |] eqn:Ek;
     cbn;
@@ -516,9 +520,9 @@ Lemma ns_journal_sim : forall v env w wm, nsrel w wm ->
   sim_ns (run env (Perform OJournal [v]) w) (run env (ns_journal v) wm).
 Proof.
   intros v env w wm H.
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf).
-  destruct w as [s c n tr ca j fl fdt nf]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm].
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst cm nm trm cam jm flm fdtm nfm.
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc).
+  destruct w as [s c n tr ca j fl fdt nf sc0 sk0 lg0 nc0]; destruct wm as [sm cm nm trm cam jm flm fdtm nfm scm skm lgm ncm].
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst cm nm trm cam jm flm fdtm nfm scm skm lgm ncm.
   unfold ns_journal. cbn.
   unfold find_live.
   rewrite (Hv (String pfx_j EmptyString)), view_j0.
@@ -540,13 +544,17 @@ Qed.
     cache/journal ops at a wrong arity (source [Dstuck] with no world change,
     elaborated to [Ret dstuck_val]). *)
 Local Ltac ns_pass H w wm :=
-  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf);
+  destruct H as (Hv & Hc & Hn & Ht & Hca & Hj & Hfl & Hfd & Hnf & Hsc & Hsk & Hlg & Hnc);
   destruct w; destruct wm;
-  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf; subst;
+  cbn in Hv, Hc, Hn, Ht, Hca, Hj, Hfl, Hfd, Hnf, Hsc, Hsk, Hlg, Hnc; subst;
   cbn;
   repeat (match goal with
           | |- context [handle_file ?a ?b ?c ?d ?e] =>
               destruct (handle_file a b c d e) as [? [[? ?] ?]]
+          | |- context [handle_sock ?a ?b ?c ?d ?e ?f] =>
+              destruct (handle_sock a b c d e f) as [? [[[? ?] ?] ?]]
+          | |- context [sk_find ?a ?b] => destruct (sk_find a b) as [[? [? ?]] |]
+          | |- context [match ?x with [] => _ | _ :: _ => _ end] => destruct x
           | |- context [eval_val ?e ?v] => destruct (eval_val e v)
           | |- context [Z.eqb ?a ?b] => destruct (Z.eqb a b)
           | |- context [Z.leb ?a ?b] => destruct (Z.leb a b)
@@ -600,6 +608,10 @@ Proof.
   - (* ORead *)   ns_pass H w wm.
   - (* OFWrite *) ns_pass H w wm.
   - (* OClose *)  ns_pass H w wm.
+  - (* OAccept *)   ns_pass H w wm.
+  - (* ORecv *)     ns_pass H w wm.
+  - (* OSend *)     ns_pass H w wm.
+  - (* OCloseConn *) ns_pass H w wm.
 Qed.
 
 Lemma try_branches_ns_sim :
@@ -960,8 +972,8 @@ Proof.
     apply nsrel_add_c. intro km2.
     apply (nsrel_add_j _ _ _ [] 40 (DInt 3)). intro km3.
     apply view_empty. }
-  exists (mkWorld s1 DUnit 50 [] ca1 js1 (M.empty (list ascii)) [] 3).
-  exists (mkWorld sm DUnit 50 [] (M.empty dval) [] (M.empty (list ascii)) [] 3).
+  exists (mkWorld s1 DUnit 50 [] ca1 js1 (M.empty (list ascii)) [] 3 [] [] [] 1).
+  exists (mkWorld sm DUnit 50 [] (M.empty dval) [] (M.empty (list ascii)) [] 3 [] [] [] 1).
   repeat split; try reflexivity.
   (* remaining: the view, the two nonemptiness witnesses (the elaborated-hit
      equation was closed by reflexivity's conversion) *)

@@ -284,3 +284,22 @@ let prim_list_snoc (l : Rval.t) (v : Rval.t) : Rval.t =
   match l with
   | Rval.List vs -> Rval.List (vs @ [ v ])
   | _ -> Rval.None  (* shape mismatch *)
+
+(** [prim_find_sub hay needle]: first index of [needle] in [hay]; None-encoded
+    absence; the EMPTY needle finds index 0 (C4 rider prim, adr-0018 §6).
+    Written FROM [EffIR.apply_prim PFindSub] / [find_sub]: a naive left-to-right
+    scan — the FIRST match wins, overlaps included. Shape mismatch -> Rval.None. *)
+let prim_find_sub (hay : Rval.t) (needle : Rval.t) : Rval.t =
+  match hay, needle with
+  | Rval.Bytes h, Rval.Bytes n ->
+      let lh = Bytes.length h and ln = Bytes.length n in
+      let rec at_idx i j =
+        j >= ln || (Bytes.get h (i + j) = Bytes.get n j && at_idx i (j + 1))
+      in
+      let rec scan i =
+        if i + ln > lh then Rval.None
+        else if at_idx i 0 then Rval.Some (Rval.Int (Z.of_int i))
+        else scan (i + 1)
+      in
+      scan 0
+  | _ -> Rval.None
