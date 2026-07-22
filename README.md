@@ -161,5 +161,5 @@ the fuller design is recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-sta
 
 ## License
 
-BSD-3-Clause (see [`LICENSE`](LICENSE)).
+MIT (see [`LICENSE`](LICENSE)).
 </content>
