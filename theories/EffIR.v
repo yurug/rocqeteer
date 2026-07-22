@@ -151,7 +151,14 @@ Inductive op : Type :=
   | OGet | OPut | ODelete | OGetDeadline | OSetDeadline | ONow
   | OThrow | OAsk | OTrace | OCacheGet | OCachePut | OJournal
   | OOpen | ORead | OFWrite | OClose
-  | OAccept | ORecv | OSend | OCloseConn.
+  | OAccept | ORecv | OSend | OCloseConn
+  | OSpawn | OYield | OChanMake | OChanSend | OChanRecv.
+  (** C5 (adr-0019): concurrency ops. They are SEQUENTIALLY [Dstuck] — the reference
+      [run] has no scheduler, so a concurrency-free program never performs them; the
+      concurrent scheduler (theories/Sched.v) INTERCEPTS them before the step machine
+      reduces them (theories/Cek.v). No world field, no [handle_*] arm: they fall to
+      the [handle_store] default => [Dstuck]. Fiber bodies are statically-named [tm]s
+      (adr-0019 Q1); [OSpawn] takes the body index. *)
 
 (** ** Closed v1 primitive set (adr-0009-vprim-registry §Decision 3).
     All prims are TOTAL: fallible ones return option-encoded dvals (DNone/DSome) so that

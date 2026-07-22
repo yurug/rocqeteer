@@ -568,6 +568,11 @@ Proof.
   - (* ORecv *)     elab_pass H w wk.
   - (* OSend *)     elab_pass H w wk.
   - (* OCloseConn *) elab_pass H w wk.
+  - (* OSpawn *)     elab_pass H w wk.
+  - (* OYield *)     elab_pass H w wk.
+  - (* OChanMake *)  elab_pass H w wk.
+  - (* OChanSend *)  elab_pass H w wk.
+  - (* OChanRecv *)  elab_pass H w wk.
 Qed.
 
 (** Branch dispatch: environments are EQUAL on the two sides (only worlds differ),

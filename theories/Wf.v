@@ -64,6 +64,11 @@ Definition op_arity (o : op) : nat :=
   | ORecv        => 2
   | OSend        => 2
   | OCloseConn   => 1
+  | OSpawn       => 1
+  | OYield       => 0
+  | OChanMake    => 0
+  | OChanSend    => 2
+  | OChanRecv    => 1
   end%nat.
 
 (** Exact arity of each primitive (the adr-0009/0012 registry). The exhaustive match

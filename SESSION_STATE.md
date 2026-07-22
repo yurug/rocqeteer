@@ -386,3 +386,35 @@ the next per the injected schedule); Deadlocked outcome (all-blocked detection).
 sequential-under-singleton-schedule corollary recovering C4's http_prog_correct. Runtime Effect.Deep
 scheduler gets its own review (ADR-0019 status). Still pending: redoq mode-K CI leg + bench at pin
 bump; PCountByte; mode-K over file/socket samples.
+
+## 2026-07-22 — C5 concurrency scheduler built on the CEK machine (theories/Sched.v)
+EffIR: +5 conc ops (OSpawn/OYield/OChanMake/OChanSend/OChanRecv), SEQUENTIALLY Dstuck (no world field,
+no handle arm — they fall to the handle_store default). Ripple LIGHT (the design paid off): Wf op_arity
++5, Elab/ElabNs perform-sim +5 pass bullets each; NOTHING else (they pass through elab_perform's
+default and run's handle_store default). Full tree rebuilds; generated freshness gate green; diff_store
+smoke green.
+**theories/Sched.v** (5/5 Print Assumptions closed, axiom-free): the cooperative scheduler. Fibers SHARE
+one world; a fiber = a world-free CEK frame state (fstate = FE tm env kont | FR outcome kont); fstep
+reuses Cek.step (world threaded out via to_cfg/of_cfg). run_to_sched runs a fiber to its next
+SCHEDULING POINT (halt or a conc op — fconc detects FE(Perform conc-op)); the scheduler INTERCEPTS the
+op (the machine never reduces conc ops). sched_one handles one scheduled fiber; run_sched folds the
+injected schedule (a FUNCTION of it — determinism by injection, the C4 script oracle generalized to
+interleaving order). Channels = Z-keyed FIFO assoc lists in the scheduler state (NOT the world);
+OChanRecv on empty = BLOCK (no progress this slot); deadlock = all fibers blocked → sresult_of = Stuck.
+No shared-memory op → data races not representable (structural).
+Anti-vacuity (vm_compute, all 5 ops exercised): schedule_matters (fA=trace10;yield;trace11, fB=trace20;
+[1;2;1] vs [1;1;2] give DIFFERENT traces — the oracle controls interleaving), interleaving_121 pins
+[10;20;11], seq_embedding (a conc-free fiber = its sequential run — trace and outcome), deadlock (mutual
+empty-recv → Stuck [1;2] []), producer_consumer (OChanSend 42 / OChanRecv, block-then-progress),
+spawn_runs (OSpawn body-by-index adds a fiber that runs). Reaping note: a fiber finishing AT a
+conc-op-resume (kont→[]) is reaped only when NEXT scheduled (run_to_sched sees fdone) — schedules end
+with a slot to reap such fibers.
+
+## Exact next step (post-scheduler)
+GENERAL theorems: (1) run_sched of a SINGLE conc-free fiber under a long-enough singleton schedule =
+big-step run (via Cek.cek_adequate + a run_to_sched↔star bridge) — the sequential embedding proven, not
+just instanced; (2) determinism stated as a corollary (run_sched is a function). Then the CONCURRENT
+HTTP driver: spawn a fiber per accepted connection, recover C4's http_prog_correct under the singleton
+schedule. Then (gated on its OWN review per adr-0019) the OCaml Effect.Deep scheduler + differential
+(record-and-replay the schedule, the C4 pattern). Still pending: redoq mode-K CI leg + bench; PCountByte;
+mode-K over file/socket samples.

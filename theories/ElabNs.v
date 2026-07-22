@@ -612,6 +612,11 @@ Proof.
   - (* ORecv *)     ns_pass H w wm.
   - (* OSend *)     ns_pass H w wm.
   - (* OCloseConn *) ns_pass H w wm.
+  - (* OSpawn *)     ns_pass H w wm.
+  - (* OYield *)     ns_pass H w wm.
+  - (* OChanMake *)  ns_pass H w wm.
+  - (* OChanSend *)  ns_pass H w wm.
+  - (* OChanRecv *)  ns_pass H w wm.
 Qed.
 
 Lemma try_branches_ns_sim :

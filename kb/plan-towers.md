@@ -93,7 +93,7 @@ request-line parser (reuse the redoq RESP experience). ADR with the family desig
   runs under the generated backend, golden suite green; sockets family in manifest + gallery.
 
 ## C5 — Concurrency effects (user-flagged; the capstone)
-**Full design: [[adr-0019-concurrency]] (RESOLVED 2026-07-22).** C5.1 spike + full-tm adequacy CLOSED (theories/Cek.v — the CEK step machine equals big-step run over the WHOLE tm, axiom-free); C5 committed to the CEK machine. The constraints below
+**Full design: [[adr-0019-concurrency]] (RESOLVED 2026-07-22).** C5.1 spike + full-tm adequacy CLOSED (theories/Cek.v — the CEK step machine equals big-step run over the WHOLE tm, axiom-free); C5 committed to the CEK machine. Scheduler built on the machine (theories/Sched.v): 5 conc ops (sequentially Dstuck, scheduler-intercepted), schedule oracle, channels, deadlock-as-Stuck; anti-vacuity green (schedule_matters/seq_embedding/deadlock/producer_consumer/spawn). Next: general sequential-embedding theorem + concurrent HTTP driver; OCaml runtime gated on review. The constraints below
 were fixed at the 2026-07-19 review so C3/C4 built toward them; the ADR turns them into the schedule-oracle
 + step-machine design and names the load-bearing adequacy proof and its fallback. Constraints:
 1. **One-shot continuations only** — invariant 7 already forbids multi-shot; the concurrency design must
