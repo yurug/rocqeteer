@@ -357,3 +357,32 @@ next_chan) + Deadlocked outcome; runtime Effect.Deep scheduler; concurrent HTTP 
 sequential-under-singleton-schedule corollary recovering C4's http_prog_correct. Runtime realizer gets
 its own review once full-tm adequacy is in (ADR-0019 status). Also still pending: redoq mode-K CI leg +
 bench at next pin bump; PCountByte (wc -l); mode-K over file/socket samples.
+
+## 2026-07-22 — C5 full-tm adequacy CLOSED (theories/Cek.v scaled to the whole term)
+Scaled the C5.1 spike from {Ret,Bind,Perform} to the ENTIRE tm. Machine additions: KRep frame
+(Repeat — on ORet, REFOCUS as CEval (Repeat m body), so IH(m) applies directly), KFold frame (Fold —
+one frame carries remaining elements; the CRet ORet value IS the accumulator, so KFold0/KFoldS unify
+to one), select (Match — pure first-match dispatch to a tail-run, NO frame), Prim reuses run verbatim
+like Perform (leaf). THE theorem cek_run: adeq t for EVERY t (adeq t := forall env k w, star
+(CEval t env k w) (CRet (fst (run env t w)) k (snd (run env t w)))) — strong structural induction
+(tm_ind_strong) with the continuation k generalized; three helper inductions close the compound
+constructs: cek_match_dispatch (on branch list), cek_repeat (on fuel n), cek_fold (on element list).
+cek_adequate = empty-k top level: the machine IS run. Compiled FIRST TRY after the spike; the
+prediction held (Match/Repeat/Prim/Fold = frame shapes, not a new idea). 7/7 Print Assumptions closed;
+proof-only, no codegen/runtime/test impact; no-admitted gate green. Key moves worth remembering:
+generalize over k (a pushed frame is just a longer k the IH covers); reuse run for leaves (agreement
+free); refocus KRep as Repeat (not raw body) so the fuel IH lands; unify the two Fold frames via
+"CRet value = acc"; definitional step-equations (run_bind/tb_cons/repeat_loop_S/fold_elems_cons) all
+by reflexivity. ex_machine_matches_run (vm_compute over a Repeat+Fold+Prim+Perform+Bind term) witnesses
+non-vacuity.
+
+## Exact next step (post full-tm adequacy)
+Build the concurrency family on the now-validated machine: world regions (fiber pool = list of
+(id, config) suspended machines, channel table, schedule : list fiber_id, transcript, next_chan);
+the 5 ops (OSpawn body-by-index / OYield / OChanMake / OChanSend / OChanRecv) as machine-level
+scheduling steps (a fiber runs via `step` until it blocks/yields/completes, then the scheduler picks
+the next per the injected schedule); Deadlocked outcome (all-blocked detection). Determinism theorem
+(fixed schedule => deterministic transcript), then the concurrent HTTP driver with the
+sequential-under-singleton-schedule corollary recovering C4's http_prog_correct. Runtime Effect.Deep
+scheduler gets its own review (ADR-0019 status). Still pending: redoq mode-K CI leg + bench at pin
+bump; PCountByte; mode-K over file/socket samples.
