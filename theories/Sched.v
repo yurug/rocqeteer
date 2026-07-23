@@ -349,6 +349,251 @@ Proof.
   split; [exact Hw | exact Hd].
 Qed.
 
+(* ===== §5c  The conc-free invariant: Hrun discharged by law, not by vm ====== *)
+
+(** A term is CONCURRENCY-FREE when no reachable [Perform] targets a concurrency op.
+    Branch bodies recurse through an inline nested fix (the standard single-Fixpoint
+    encoding of list-of-subterms recursion — a genuine mutual fixpoint is rejected by
+    the guard on the hidden [snd]/component projection). *)
+Fixpoint conc_free (t : tm) : Prop :=
+  match t with
+  | Ret _          => True
+  | Bind a b       => conc_free a /\ conc_free b
+  | Perform o _    => is_conc o = false
+  | Match _ bs d   =>
+      (fix cfb (l : list (pat * tm)) : Prop :=
+         match l with
+         | []          => True
+         | (_, b) :: r => conc_free b /\ cfb r
+         end) bs
+      /\ conc_free d
+  | Repeat _ b     => conc_free b
+  | Prim _ _       => True
+  | Fold _ i b     => conc_free i /\ conc_free b
+  end.
+
+(** Standalone branch predicate (references the closed [conc_free] constant) and the
+    bridge to the inline form above. *)
+Fixpoint conc_free_branches (bs : list (pat * tm)) : Prop :=
+  match bs with
+  | []          => True
+  | (_, b) :: r => conc_free b /\ conc_free_branches r
+  end.
+
+Lemma conc_free_Match : forall s bs d,
+  conc_free (Match s bs d) <-> conc_free_branches bs /\ conc_free d.
+Proof.
+  intros s bs d; cbn [conc_free]; split.
+  - intros [Hb Hd]; split; [| exact Hd]; revert Hb.
+    induction bs as [| [p b] r IH]; cbn; intros Hb; [exact I |].
+    destruct Hb as [h t0]; split; [exact h | exact (IH t0)].
+  - intros [Hb Hd]; split; [| exact Hd]; revert Hb.
+    induction bs as [| [p b] r IH]; cbn; intros Hb; [exact I |].
+    destruct Hb as [h t0]; split; [exact h | exact (IH t0)].
+Qed.
+
+(** Extended to machine states: the focused term AND every term buried in the
+    continuation frames must be conc-free (a pending [KB]/[KRep]/[KFold] body becomes
+    the focus after a return, so the invariant must reach into the stack). *)
+Definition conc_free_frame (fr : frame) : Prop :=
+  match fr with KB t2 _ => conc_free t2 | KRep _ b _ => conc_free b | KFold _ b _ => conc_free b end.
+
+Definition conc_free_kont (k : kont) : Prop := Forall conc_free_frame k.
+
+Definition conc_free_cfg (c : config) : Prop :=
+  match c with
+  | CEval t _ k _ => conc_free t /\ conc_free_kont k
+  | CRet _ k _    => conc_free_kont k
+  end.
+
+Definition conc_free_fstate (f : fstate) : Prop :=
+  match f with FE t _ k => conc_free t /\ conc_free_kont k | FR _ k => conc_free_kont k end.
+
+(** [select] lands on a conc-free body: the chosen branch (or default) is one of the
+    conc-free terms.  Induction on the branch list. *)
+Lemma select_conc_free : forall d env bs default,
+  conc_free_branches bs -> conc_free default ->
+  conc_free (fst (select d env bs default)).
+Proof.
+  induction bs as [| [p b] r IH]; intros default Hb Hd; simpl in Hb |- *.
+  - exact Hd.
+  - destruct Hb as [Hhead Htail]; simpl in Hhead.
+    destruct (match_pat p d) as [pl |] eqn:E; simpl.
+    + exact Hhead.
+    + apply IH; assumption.
+Qed.
+
+(** [step] preserves the invariant: every frame it pushes carries a term the source
+    term already contained (so conc-freedom is inherited), and it never fabricates a
+    concurrency op.  This is the heart — it makes the machine-interface hypothesis a
+    theorem, not an assumption. *)
+Lemma step_conc_free : forall c, conc_free_cfg c -> conc_free_cfg (step c).
+Proof.
+  intros c H; destruct c as [t env k w | r k w]; cbn [step].
+  - destruct H as [Ht Hk];
+      destruct t as [v0 | a1 a2 | o args | scr bs def | n body | p args | lst ini body].
+    + (* Ret *) exact Hk.
+    + (* Bind *) cbn [conc_free] in Ht; destruct Ht as [H1 H2].
+      split; [exact H1 | apply Forall_cons; assumption].
+    + (* Perform *) destruct (run env (Perform _ _) w) as [r w']; exact Hk.
+    + (* Match *) destruct (proj1 (conc_free_Match scr bs def) Ht) as [Hbs Hd].
+      destruct (select (eval_val env scr) env bs def) as [bdy env'] eqn:Es.
+      pose proof (select_conc_free (eval_val env scr) env bs def Hbs Hd) as Hsel.
+      rewrite Es in Hsel; cbn [fst] in Hsel. split; assumption.
+    + (* Repeat *) cbn [conc_free] in Ht.
+      destruct n; [exact Hk | split; [exact Ht | apply Forall_cons; assumption]].
+    + (* Prim *) destruct (run env (Prim _ _) w) as [r w']; exact Hk.
+    + (* Fold *) cbn [conc_free] in Ht; destruct Ht as [Hi Hb].
+      split; [exact Hi | apply Forall_cons; [exact Hb | exact Hk]].
+  - (* CRet: step consumes/refocuses a frame *)
+    destruct k as [| fr k']; cbn [conc_free_cfg conc_free_kont] in *.
+    + exact H.
+    + apply Forall_inv in H as Hf; apply Forall_inv_tail in H as Hk'.
+      destruct fr as [t2 e2 | m body e | xs body e]; cbn [conc_free_frame] in Hf.
+      * destruct r as [x | er]; cbn [conc_free_cfg]; [split; assumption | exact Hk'].
+      * destruct r as [x | er]; cbn [conc_free_cfg conc_free]; [split; assumption | exact Hk'].
+      * destruct r as [x | er]; cbn [conc_free_cfg]; [| exact Hk'].
+        destruct xs as [| y xs']; [exact Hk' | split; [exact Hf | apply Forall_cons; assumption]].
+Qed.
+
+(* Roundtrips between the world-free fiber state and the machine config. *)
+Lemma of_cfg_to_cfg : forall f w, of_cfg (to_cfg f w) = (f, w).
+Proof. intros [t e k | o k] w; reflexivity. Qed.
+
+Lemma conc_free_of_cfg : forall c, conc_free_cfg c -> conc_free_fstate (fst (of_cfg c)).
+Proof. intros [t e k w | o k w] H; exact H. Qed.
+
+Lemma to_cfg_of_cfg : forall c, to_cfg (fst (of_cfg c)) (snd (of_cfg c)) = c.
+Proof. intros [t e k w | o k w]; reflexivity. Qed.
+
+Lemma fdone_halted : forall f w, fdone f = halted (to_cfg f w).
+Proof. intros [t e k | o k] w; [reflexivity | destruct k; reflexivity]. Qed.
+
+(** A conc-free fiber is NEVER at a scheduling point: [fconc] is [None], so
+    [run_to_sched] never stops early to hand control to the scheduler. *)
+Lemma fconc_conc_free : forall f, conc_free_fstate f -> fconc f = None.
+Proof.
+  intros [t e k | o k] H; [| reflexivity].
+  destruct t; try reflexivity. cbn [conc_free_fstate conc_free] in H.
+  destruct H as [Ho _]. cbn [fconc]. rewrite Ho. reflexivity.
+Qed.
+
+(** THE bridge: for a conc-free fiber, [run_to_sched] (the scheduler's per-fiber
+    driver) IS [Cek.drive] — it never diverts to the scheduler, so it just iterates
+    [step].  General over fuel and state. *)
+Lemma run_to_sched_drive : forall n f w,
+  conc_free_fstate f ->
+  run_to_sched n f w = of_cfg (drive n (to_cfg f w)).
+Proof.
+  induction n as [| m IH]; intros f w Hcf; cbn [run_to_sched drive].
+  - rewrite of_cfg_to_cfg; reflexivity.
+  - rewrite (fdone_halted f w). destruct (halted (to_cfg f w)) eqn:Eh.
+    + rewrite of_cfg_to_cfg; reflexivity.
+    + rewrite (fconc_conc_free f Hcf). unfold fstep.
+      destruct (of_cfg (step (to_cfg f w))) as [f' w'] eqn:Eo.
+      rewrite (IH f' w').
+      * assert (Hc : to_cfg f' w' = step (to_cfg f w)).
+        { pose proof (to_cfg_of_cfg (step (to_cfg f w))) as Hto.
+          rewrite Eo in Hto; cbn [fst snd] in Hto; exact Hto. }
+        rewrite Hc. reflexivity.
+      * pose proof (conc_free_of_cfg (step (to_cfg f w))) as Hcp.
+        rewrite Eo in Hcp; cbn [fst] in Hcp.
+        apply Hcp, step_conc_free; destruct f; exact Hcf.
+Qed.
+
+(** The DISCHARGE law (adr-0019): for EVERY concurrency-free program, the scheduler's
+    single-fiber driver reaches exactly big-step [run] — outcome, world, halted with no
+    frames — with enough fuel.  This turns [seq_embedding_general]'s [Hrun] hypothesis
+    into a theorem for the whole conc-free class: sequential (file/socket) programs
+    embed into the scheduler BY LAW, not by [vm_compute] on one witness.  Corollary of
+    the conc-free invariant plus [Cek.cek_drive_run]. *)
+Theorem conc_free_embeds : forall t w,
+  conc_free t ->
+  exists n, run_to_sched n (FE t [] []) w
+            = (FR (fst (run [] t w)) [], snd (run [] t w)).
+Proof.
+  intros t w Hcf.
+  destruct (cek_drive_run t [] w) as [n Hn].
+  exists n. rewrite (run_to_sched_drive n (FE t [] []) w).
+  - cbn [to_cfg]. rewrite Hn. reflexivity.
+  - split; [exact Hcf | constructor].
+Qed.
+
+(* The scheduler's per-fiber budget is the fixed [RTS_FUEL]; the discharge above is
+   existential in fuel.  To feed it into the [RTS_FUEL]-budgeted [run_sched] we need
+   only that once [run_to_sched] reaches a done state, MORE fuel is stable — i.e. the
+   driver parks on halted configs (via [Cek.drive]). *)
+Lemma fdone_fst_of_cfg : forall c, fdone (fst (of_cfg c)) = halted c.
+Proof. intros [t e k w | o k w]; [reflexivity | destruct k; reflexivity]. Qed.
+
+Lemma drive_mono : forall n c,
+  halted (drive n c) = true -> forall m, (n <= m)%nat -> drive m c = drive n c.
+Proof.
+  induction n as [| k IH]; intros c Hn m Hm; cbn [drive] in Hn.
+  - apply drive_stable; exact Hn.
+  - destruct (halted c) eqn:Hc.
+    + rewrite (drive_stable m c Hc), (drive_stable (S k) c Hc); reflexivity.
+    + destruct m as [| m']; [inversion Hm |].
+      cbn [drive]; rewrite Hc.
+      apply (IH (step c) Hn m'); apply le_S_n; exact Hm.
+Qed.
+
+Lemma run_to_sched_ge : forall n f w,
+  conc_free_fstate f ->
+  fdone (fst (run_to_sched n f w)) = true ->
+  forall m, (n <= m)%nat -> run_to_sched m f w = run_to_sched n f w.
+Proof.
+  intros n f w Hcf Hdone m Hm.
+  rewrite (run_to_sched_drive n f w Hcf) in Hdone.
+  rewrite fdone_fst_of_cfg in Hdone.
+  rewrite (run_to_sched_drive m f w Hcf), (run_to_sched_drive n f w Hcf).
+  rewrite (drive_mono n (to_cfg f w) Hdone m Hm). reflexivity.
+Qed.
+
+(** The general embedding, HYPOTHESIS-FREE for conc-free programs that fit the fixed
+    scheduler budget: the single-fiber [run_sched] reaps [run]'s outcome into the done
+    list, leaves the shared world at [run]'s final world, no fibers remaining.  The
+    only side condition is the budget — some fuel [n <= RTS_FUEL] reaches a done state
+    — which every closed conc-free program satisfies concretely (and unboundedly by
+    [conc_free_embeds]).  This is [seq_embedding_general] with its [Hrun] DISCHARGED by
+    the conc-free invariant, not assumed. *)
+Theorem seq_embedding_cf : forall t w1 fid nf nc,
+  conc_free t ->
+  (exists n, (n <= RTS_FUEL)%nat
+             /\ fdone (fst (run_to_sched n (FE t [] []) w1)) = true) ->
+  let s := run_sched nb [fid] (init_sst w1 [(fid, FE t [] [])] [] nf nc) in
+  swld s = snd (run [] t w1)
+  /\ sdone s = [(fid, fst (run [] t w1))]
+  /\ sfib s = [].
+Proof.
+  intros t w1 fid nf nc Hcf [n [Hle Hdn]]. cbn zeta.
+  assert (Hfs : conc_free_fstate (FE t [] [])) by (split; [exact Hcf | constructor]).
+  (* At RTS_FUEL the driver has parked on the same done state as at [n]. *)
+  assert (HR : run_to_sched RTS_FUEL (FE t [] []) w1
+               = run_to_sched n (FE t [] []) w1)
+    by (apply (run_to_sched_ge n (FE t [] []) w1 Hfs Hdn); exact Hle).
+  (* And [conc_free_embeds] identifies that stable value with [run]: [n] and [ne]
+     reach the SAME halted state (both done → equal at their max, hence equal). *)
+  destruct (conc_free_embeds t w1 Hcf) as [ne Hne].
+  assert (Hn_target : run_to_sched n (FE t [] []) w1
+                      = (FR (fst (run [] t w1)) [], snd (run [] t w1))).
+  { destruct (Nat.le_ge_cases n ne) as [Hnn | Hnn].
+    - rewrite <- (run_to_sched_ge n (FE t [] []) w1 Hfs Hdn ne Hnn). exact Hne.
+    - assert (Hdne : fdone (fst (run_to_sched ne (FE t [] []) w1)) = true)
+        by (rewrite Hne; reflexivity).
+      rewrite (run_to_sched_ge ne (FE t [] []) w1 Hfs Hdne n Hnn). exact Hne. }
+  assert (Hcommon : run_to_sched RTS_FUEL (FE t [] []) w1
+                    = (FR (fst (run [] t w1)) [], snd (run [] t w1)))
+    by (rewrite HR; exact Hn_target).
+  assert (Hlk : lookupZ fid [(fid, FE t [] [])] = Some (FE t [] []))
+    by (simpl; rewrite Z.eqb_refl; reflexivity).
+  assert (Hrm : removeZ fid [(fid, FE t [] [])] = [])
+    by (simpl; rewrite Z.eqb_refl; reflexivity).
+  unfold run_sched, sched_one, init_sst; cbn [sfib swld schan sdone snextf snextc].
+  rewrite Hlk; cbn [fst snd]. rewrite Hcommon; cbn [fdone].
+  rewrite Hrm. repeat split; reflexivity.
+Qed.
+
 (* ===== §6  Print Assumptions ================================================ *)
 
 (** Each must read "Closed under the global context". *)
@@ -359,3 +604,5 @@ Print Assumptions producer_consumer.
 Print Assumptions spawn_runs.
 Print Assumptions seq_embedding_general.
 Print Assumptions seq_embedding_fS.
+Print Assumptions conc_free_embeds.
+Print Assumptions seq_embedding_cf.

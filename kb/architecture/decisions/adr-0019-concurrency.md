@@ -140,3 +140,24 @@ C5.1 spike.** This is the C1 pattern (attempt the strong theorem, named fallback
   contract; the schedule-faithful assumption is replay-validated.
 - Wf checker gains the op arities only; no typing changes (the fiber-body-by-index decision keeps `tm`
   unchanged).
+
+## Delivered (theory; OCaml runtime still gated on its own review)
+- **Machine + adequacy** (`theories/Cek.v`): the defunctionalized frame-stack step machine over the same
+  `tm`; `cek_adequate`/`cek_drive_run` — the executable fuel driver computes big-step `run` for EVERY
+  program. Axiom-free.
+- **Scheduler** (`theories/Sched.v`): 5 conc ops (sequentially `Dstuck`, scheduler-intercepted), schedule
+  oracle, channels, deadlock-as-`Stuck`. Anti-vacuity green (schedule_matters / interleaving / deadlock /
+  producer_consumer / spawn_runs).
+- **The conc-free invariant discharges the machine interface, by law** (`Sched.v` §5c): `conc_free` +
+  `step_conc_free` (preservation) + `fconc_conc_free` (no false scheduling point) ⇒ `run_to_sched` of a
+  conc-free fiber IS `Cek.drive` (`run_to_sched_drive`); hence `conc_free_embeds` (every conc-free program
+  embeds into the scheduler as `run`, existential fuel) and `seq_embedding_cf` (the fixed-`RTS_FUEL`
+  `run_sched` recovers `run` for conc-free programs that fit the budget — `seq_embedding_general`'s `Hrun`
+  now a THEOREM, not an assumption).
+- **The concurrent HTTP driver** (`theories/SchedHttp.v`): (A) `http_driver_seq` — the certified
+  `http_prog` run as one scheduled fiber recovers `expected_log` GENERALLY (via `seq_embedding_cf` +
+  `http_prog_correct`; smoke corollary `http_driver_seq_smoke` discharges the fuel budget by `vm_compute`).
+  (B) `drv_concurrent_matches` — a genuinely concurrent acceptor+worker structure (channels) produces the
+  EXACT `expected_log` under a run-to-completion schedule; `drv_worker_starved` is the schedule-is-load-
+  bearing mutant. Re-deriving (B) generally through the channel plumbing is the reserved statement
+  boundary; (A) is the general law for the single-fiber recovery.

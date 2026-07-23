@@ -446,3 +446,42 @@ transcript = C4's sequential accept loop, recovering SockIO.http_prog_correct �
 theorem. (3) Gated on its OWN review (adr-0019): the OCaml Effect.Deep scheduler + record-and-replay
 differential (the C4 schedule-as-oracle pattern). Still pending: redoq mode-K CI leg + bench; PCountByte;
 mode-K over file/socket samples.
+
+## 2026-07-23 — C5 conc-free invariant + concurrent HTTP driver (Sched↔SockIO closed)
+Two-part unit, all axiom-free, theory-only (no codegen/runtime/test churn).
+**theories/Sched.v §5c — the conc-free invariant discharges Hrun BY LAW:** `conc_free : tm -> Prop`
+(inline nested fix for branch bodies — a genuine mutual fixpoint is rejected by the guard on the hidden
+component projection; standalone `conc_free_branches` + `conc_free_Match` bridge). `step_conc_free`
+(step preserves conc-freedom: every pushed KB/KRep/KFold frame carries a term the source already
+contained, and no conc op is fabricated — `select_conc_free` for the Match arm). `fconc_conc_free` (a
+conc-free fiber is never at a scheduling point). Hence **run_to_sched_drive** (run_to_sched of a conc-free
+fiber IS `Cek.drive` — via of_cfg/to_cfg roundtrips + fdone↔halted) → **conc_free_embeds** (every conc-free
+program embeds into run_to_sched as big-step `run`, existential fuel, from Cek.cek_drive_run) →
+**seq_embedding_cf** (the fixed-RTS_FUEL `run_sched` recovers `run` for conc-free programs meeting the
+budget; drive_mono + run_to_sched_ge bridge the existential fuel to RTS_FUEL). This turns
+seq_embedding_general's Hrun from assumption into theorem for the whole conc-free class.
+**theories/SchedHttp.v — the concurrent HTTP driver ↔ the certified server:** (A) `http_driver_seq`
+(GENERAL): the proven sequential `http_prog` (conc_free — `conc_free_http_prog`) run as ONE scheduled
+fiber recovers `conn_log = expected_log` + `sdone=[(fid,ORet DUnit)]` + `sfib=[]`, via seq_embedding_cf +
+SockIO.http_prog_correct (no interpreter re-proof; run_sock = run [] _ sockw definitionally). Smoke
+corollary `http_driver_seq_smoke` discharges the fuel budget by vm_compute (hypothesis-free). (B)
+`drv_concurrent_matches`: a genuinely CONCURRENT acceptor+worker structure (acceptor OAccepts and
+OChanSends each conn on channel 0; worker OChanRecvs and runs the same http_handle arm) produces the
+EXACT expected_log under run-to-completion schedule [1;2]×4 — both fibers reaped. `drv_worker_starved`
+(schedule [1;1;1;1] → empty transcript) is the schedule-is-load-bearing mutant. Channel handshake note:
+channel 0 pre-made in drv_init (snextc=1) and hardcoded VInt 0 in both bodies — sidesteps the
+static-body/empty-env vs dynamic-OChanMake tension (a spawned worker can't receive a dynamic channel
+handle; the runtime sets up the listener/channel). Print Assumptions: all "Closed under the global
+context" (Sched +2, SchedHttp +4). Full `dune build` + no-admitted + stray-perform gates green. 365
+Print Assumptions statements across theories.
+
+## Exact next step (post concurrent-driver)
+C5 theory is COMPLETE (machine adequate, scheduler exercised on all 5 ops, sequential embedding general
+law, conc-free Hrun discharged, concurrent driver recovers the certified transcript). Remaining C5 work,
+gated on its OWN review per adr-0019: the **OCaml Effect.Deep scheduler** (near-idiomatic Eio-style,
+no Eio dep, one-shot continuations) + **record-and-replay differential** (fast side logs fiber_id at
+each scheduling point → reference replays the recorded schedule; adversarial schedules: starvation,
+immediate-block, ping-pong, deadlock) + runtime-manifest/TCB entries for the scheduler realizer. Reserved
+statement boundary: re-deriving drv_concurrent_matches GENERALLY through the multi-fiber channel plumbing
+(§B is concrete-only). Still pending from earlier: redoq mode-K CI leg + bench at next pin bump;
+PCountByte (wc -l); mode-K over file/socket samples.
