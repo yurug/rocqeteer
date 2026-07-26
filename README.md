@@ -1,33 +1,30 @@
 # Rocqeteer
 
-**Use Rocq as a certified programming language: write effectful programs in Rocq, *prove* them against
-reference semantics, and *run* them as fast, idiomatic OCaml 5 — with a small, explicit, auditable trust
-base.**
+**Use Rocq as a certified programming language: write effectful programs in Rocq, *prove*
+them against reference semantics, and *run* them as fast, idiomatic OCaml 5, with a small,
+explicit, auditable trust base.**
 
-Rocqeteer is a domain-independent toolchain. Rocq owns the specifications, laws, and proofs; OCaml owns the
-runtime — native data, effect handlers, direct-style execution. One first-order intermediate representation
-(**EffIR**) is shared by the Rocq reference interpreter and the OCaml code generator, so *the program you
-prove and the program you run cannot silently become different programs*.
+Rocq owns the specifications, the laws, and the proofs. OCaml owns the runtime: native data,
+effect handlers, direct-style execution. One first-order intermediate representation
+(**EffIR**) is shared by the Rocq reference interpreter and the OCaml code generator, so the
+program you prove and the program you run cannot silently become different programs.
 
-> **Status:** IR v2 is complete (16 effect operations across nine families — including the C3 file
-> family with its proven wc tool, and the C4 socket family with a proven HTTP/1.0 server
-> (`tools/rhttpd`) — general `Match`, `Fold`, 17 checked primitives,
-> a well-formedness checker, and a weakest-precondition program logic — 413 closed theorems, zero
-> axioms), and the toolchain has its first real consumer: **redoq**, a Redis-compatible server whose
-> 22 data commands, RESP codecs and append-only-file recovery are proven with exactly these tools.
-> Built with the spec-driven methodology in `agentic-dev-kit/`. The full design rationale, decisions, and
-> the premortem that shaped them live in the knowledge base — start at [`kb/INDEX.md`](kb/INDEX.md).
+Two proven UNIX-sized tools ship with it: `rwc`, a byte-counting `wc`, and `rhttpd`, a
+one-shot HTTP/1.0 server. Its first real consumer is redoq, a Redis-compatible server whose
+data commands, RESP codecs, and append-only-file recovery are proven with exactly these
+tools.
 
-## What it does (the slice)
+## What it does
 
-You write an effectful program in Rocq as an EffIR term (e.g. "increment the counter at key *k*"), prove a
-Hoare spec about it against a pure reference interpreter, and a single command:
+You write an effectful program in Rocq as an EffIR term, you prove a Hoare specification
+about it against a pure reference interpreter, and one command does the rest:
 
-1. **extracts** the reference interpreter to OCaml (the slow, faithful oracle), and
-2. **generates** idiomatic direct-style OCaml 5 for the *same* term (the fast path: `Effect.perform` +
-   deep handlers + a `Hashtbl`, no monad interpreter), then
-3. **differentially tests** the two against each other on thousands of adversarial inputs, and
-4. emits a **TCB report** naming every trust assumption.
+1. **extracts** the reference interpreter to OCaml, the slow and faithful oracle, then
+2. **generates** idiomatic direct-style OCaml 5 for the *same* term (`Effect.perform`, deep
+   handlers, native data structures, no monad interpreter), then
+3. **differentially tests** the two against each other on thousands of adversarial inputs,
+   and
+4. emits a **TCB report** naming every trust assumption that remains.
 
 ```
 Rocq EffIR term ──extract──▶ reference interpreter ─┐
@@ -35,131 +32,91 @@ Rocq EffIR term ──extract──▶ reference interpreter ─┐
        └──────codegen──────▶ direct-style OCaml ────┘
 ```
 
-## The effects
-
-Twenty operations over one explicit `world`, grouped into ten effect families. Every family has a
-compiled, proven example in the **[effects gallery](examples/README.md)** (`examples/` builds with
-`make all`, so the gallery cannot rot), and a theory file with the general laws.
-
-| Effect | Ops | One line | Tower | Gallery |
-|---|---|---|---|---|
-| **Keyed store** | `OGet` · `OPut` · `ODelete` | bytes-keyed state; per-key frame clauses | kernel | [`KeyedStore.v`](examples/KeyedStore.v) |
-| **Expiry** | `OSetDeadline` · `OGetDeadline` | per-binding TTLs; live iff `now ≤ deadline` — expired = absent | **derived** ([`Elab.v`](theories/Elab.v)) | [`Expiry.v`](examples/Expiry.v) |
-| **Time** | `ONow` | one injected instant per run: deterministic by construction, replayable | kernel | [`Clock.v`](examples/Clock.v) |
-| **Errors** | `OThrow` | aborting exceptions with *structured* payloads; pre-throw effects commit | kernel | [`Throw.v`](examples/Throw.v) |
-| **Environment** | `OAsk` | the Reader: immutable request/config context | kernel | [`Ask.v`](examples/Ask.v) |
-| **Trace** | `OTrace` | the Writer: provable, ordered, structured logging | kernel | [`Tracing.v`](examples/Tracing.v) |
-| **Cache** | `OCacheGet` · `OCachePut` | a memo table invisible to the observable — "only an optimization" is structural | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Memo.v`](examples/Memo.v) |
-| **Journal** | `OJournal` | write-only timestamped log; a proven frame law makes durability an afterthought | **derived** ([`ElabNs.v`](theories/ElabNs.v)) | [`Journaling.v`](examples/Journaling.v) |
-| **Files** | `OOpen` · `ORead` · `OFWrite` · `OClose` | byte streams over descriptors on a pure in-world FS; EOF = the empty chunk; modeled errors are values; the OS seam is named & runtime-checked | kernel ([ADR-0017](kb/architecture/decisions/adr-0017-file-io.md)) | [`Files.v`](examples/Files.v) |
-| **Sockets** | `OAccept` · `ORecv` · `OSend` · `OCloseConn` | scripted connections (the determinism-by-injection oracle); one-shot half-close contract; a proven HTTP/1.0 server rides on top | kernel ([ADR-0018](kb/architecture/decisions/adr-0018-sockets.md)) | [`Sockets.v`](examples/Sockets.v) |
-
-**Effect towers.** The *derived* families are not irreducible trust: each has a proven
-*elaboration* into programs over the kernel families (plain never-expiring store, clock,
-errors, environment, trace, files) with a machine-checked refinement theorem per layer
-(`Elab.elab_simulates`, `ElabNs.elab_ns_simulates` — axiom-free, no side conditions). A build can
-therefore run in **mode K**: the elaborated programs against kernel realizers only — no deadline
-logic, no cache realizer, no journal realizer in the trusted runtime — and CI differentially tests
-that configuration on every commit (`diff_store_k`, `diff_cache_k`, `diff_journal_k`). The fused
-realizers remain the *mode-F* production default as performance options — trusted and adversarially
-tested, never load-bearing for the semantics. Every trusted entry's status — `kernel-v1` or
-`derived(<theorem>)` — is recorded in the [runtime manifest](docs/runtime_manifest.toml) and
-surfaced in the generated [TCB report](docs/tcb_report.md).
-
-The glue between the effects — general `Match` over tagged values, the bounded `Repeat` loop, the
-`Fold` list eliminator, and 16 total *checked* primitives (overflow and parse failure yield an option,
-never garbage) — has its own gallery entry: [`Combinators.v`](examples/Combinators.v). On top of the
-instance theorems, a shallow weakest-precondition **program logic**
-([`theories/Logic.v`](theories/Logic.v), zero added trust) supports ∀-quantified specifications —
-see [`theories/LogicDemo.v`](theories/LogicDemo.v).
-
 ## Quick start
 
-Requires (verified versions): **Rocq 9.1.1, OCaml 5.4.1, dune 3.23.0, qcheck, zarith** (one opam switch).
+You need one opam switch with Rocq 9.1.1, OCaml 5.4.1, dune 3.23.0, qcheck, and zarith.
+Those are the versions the pipeline is verified against.
 
 ```bash
-make smoke        # day-zero gate: Rocq theory builds, extraction round-trips, OCaml 5 effects compile
-make all          # the whole pipeline + every gate (this is the validation script)
-make demo         # end-to-end narrated walkthrough of an "audited counter" + an HTML report
+make demo         # the whole thesis in five minutes, narrated
+make smoke        # day-zero gate: theories build, extraction round-trips, effects compile
+make all          # the full pipeline and every gate; this is the validation script
 ```
 
-`make demo` is the quickest way to see the whole thesis in action: it takes one composed program
-(`demo_prog` — Env + Trace + recursion + KV), shows its Rocq source and proven theorem, the idiomatic OCaml
-the codegen produced, runs it under the native handlers, and confirms the proven reference agrees with the
-fast OCaml (plus a codec round-trip) — printing a colorized terminal story and writing
+`make demo` takes one composed program, shows its Rocq source and its proven theorem, shows
+the OCaml the code generator produced, runs it under the native handlers, and confirms that
+the proven reference agrees with the fast path. It prints a colourised story and writes
 `demo/demo_report.html`.
 
-`make all` runs, in order, and fails loudly at the first broken link:
+To run the proven tools:
 
-| target | what it does |
-|--------|--------------|
-| `make rocq`       | build the Rocq theories + proofs (no `Admitted`) |
-| `make gen-fast`   | run `rocq-eff-codegen` → `generated/` |
-| `make build-fast` | compile the generated OCaml + runtime |
-| `make test`       | differential tests: reference vs fast over adversarial states |
-| `make tcb-report` | regenerate [`docs/tcb_report.md`](docs/tcb_report.md) from live build facts |
-| `make ci-checks`  | 6 forbidden-API / TCB gates (see below) |
-
-A green `make all` *is* the proof that this README's workflow works — the documented commands are the test.
-
-## What is proven vs. trusted vs. measured
-
-This distinction is the whole point; we never blur it (see
-[`kb/architecture/decisions/adr-0004-trust-model.md`](kb/architecture/decisions/adr-0004-trust-model.md)).
-
-- **Proven** (Rocq, machine-checked, **zero axioms** — `Print Assumptions incr_correct` = *"Closed under the
-  global context"*): the program meets its Hoare spec under the reference semantics, including a **frame
-  clause** (other keys untouched); the monad/state laws (P7); and the spec is **non-vacuous** (an inhabitance
-  lemma plus two mutants that provably fail the spec).
-- **Trusted & differentially tested** (*not* proven): the OCaml compiler/runtime, the code generator, and the
-  `Hashtbl` realizer. Validated by **6 programs × 5000 adversarial states = 30 000 comparisons**, with
-  asserted edge-class coverage and fault injection — never asserted, always tested.
-- **Measured** (*not* proven): performance and determinism, via CI gates. v1 does **not** prove cost/resource
-  bounds — that is a deliberate non-goal.
-
-## The CI gates (`make ci-checks`)
-
-Each gate defends a specific failure mode: no `Obj.magic`; the generated code is direct-style (no free-monad
-`Bind`); `Effect.perform` confined to `runtime/`; no `Admitted`/`admit`/`Axiom` (incl. `Parameter`/
-`Hypothesis`/…); the committed generated file equals a fresh codegen run (no hand-edits); and the TCB report
-has no undocumented drift.
-
-## Repository layout
-
-```
-theories/     Rocq: EffIR + reference interpreter (EffIR.v), proofs (KV.v), sample programs (Samples.v)
-examples/     the effects gallery: one proven, compiled demo file per effect (see examples/README.md)
-extraction/   Separate Extraction of EffIR + terms -> the `ref_extracted` OCaml library
-codegen/      rocq-eff-codegen: lowers the extracted EffIR ADT to direct-style OCaml
-runtime/      trusted OCaml realizers (kv.ml: effect + deep handler; .mli hides the constructors)
-support/      coqconv: Coq-ADT <-> zarith converters
-generated/    committed codegen output (regenerated + freshness-gated)
-tests/        diff_test.ml (bridge), diff_kv.ml (adversarial multi-program differential)
-docs/         runtime_manifest.toml, generated tcb_report.md
-ci/           the gate scripts
-kb/           the knowledge base — specs, properties, decisions, runbooks (read kb/INDEX.md)
+```bash
+dune build tools/
+dune exec tools/rwc.exe -- FILE           # byte count; the proven core caps at 32 KiB
+dune exec tools/rhttpd.exe -- PORT        # serves 16 one-shot connections on 127.0.0.1
 ```
 
-## Adding a program
+The effects gallery is built separately, with `dune build examples/`: one proven, compiled
+demonstration file per effect family, listed in [`examples/README.md`](examples/README.md).
 
-Write a closed EffIR term in `theories/Samples.v` (fragment: `Ret`/`Bind`/`Perform`/`MatchOpt`/`Repeat`,
-values via `VInt`/`VZero`/`VSucc`) and add **one line** to `Samples.all_programs` there. That single list is
-the source of truth: extracting it pulls the sample as a named value, and `rocq-eff-codegen` iterates it, so
-the program is extracted and code-generated to direct-style OCaml automatically — no separate codegen or
-extraction list to keep in sync. (Add a differential test only if it exercises a new property.)
+## What is proven, what is trusted, what is measured
 
-## Roadmap (post-slice)
+This distinction is the whole point, and blurring it would defeat the exercise.
 
-**Done** (each proven axiom-free + differentially/property tested): the eight-effect family above,
-composed; **bounded recursion** (`Repeat`, proven by induction) and **list elimination** (`Fold`, with
-invariant rules); general **`Match`** and the 16-prim **`VPrim` registry**; a **well-formedness
-checker** with a general scope-soundness theorem; the **Journal** effect with a general frame law; a
-**typed binary codec pilot** with a *proven* round-trip (`theories/Codec.v`); and the **program
-logic** (R14). Still open: value-shape typing (R10 phase 2), generated effect/handler modules,
-abstract type realization, and (once packaged for Rocq 9.x) Mode B via MetaRocq. Built reality vs.
-the fuller design is recorded in [`kb/spec/slice1-status.md`](kb/spec/slice1-status.md).
+**Proven**, machine-checked in Rocq with zero axioms: the program meets its Hoare
+specification under the reference semantics, including the frame clause, and the
+specification is non-vacuous, since every correctness theorem ships with an inhabitance
+lemma and a mutant that provably fails.
+
+**Trusted and differentially tested**, not proven: everything between the reference and the
+running binary. Rocq's extraction, the code generator, the OCaml compiler and runtime, the
+effect handlers, and the realizers. Each assumption is a named row in
+[`docs/runtime_manifest.toml`](docs/runtime_manifest.toml), surfaced in the generated
+[TCB report](docs/tcb_report.md), and backed by adversarial differential tests rather than
+by assertion.
+
+**Measured**, not proven: performance, determinism, and durability. Everything from the
+journal sink onward, meaning disk bytes, fsync, and crash atomicity, is named consumer trust
+and is explicitly out of scope.
+
+Some trust does get discharged rather than assumed: the expiry, cache, and journal families
+each have an axiom-free refinement theorem compiling them into kernel operations, and a gate
+fails the build if the manifest names a discharge theorem that does not exist.
+
+## Documentation
+
+| | |
+|---|---|
+| [`docs/effects.md`](docs/effects.md) | The effect families, their operations, and the towers that discharge three of them |
+| [`docs/pipeline.md`](docs/pipeline.md) | Every make target, and the eight gates `make ci-checks` runs |
+| [`docs/adding-a-program.md`](docs/adding-a-program.md) | How to add a program and get it proven, extracted, and generated |
+| [`docs/layout.md`](docs/layout.md) | Repository layout and where each concern lives |
+| [`docs/tcb_report.md`](docs/tcb_report.md) | Generated from live build facts: assumptions, realizers, gate results |
+| [`docs/design-report.md`](docs/design-report.md) | The original design report: trust boundaries, alternatives, rationale |
+| [`kb/INDEX.md`](kb/INDEX.md) | The knowledge base: specifications, properties, decisions, runbooks |
+
+## Status
+
+Experimental, and honest about its edges. IR v2 is complete: ten effect families over one
+explicit world, general `Match`, `Fold`, bounded `Repeat`, checked primitives that return an
+option rather than garbage, a well-formedness checker, and a weakest-precondition program
+logic. Proof counts and assumption counts are not repeated here on purpose, since
+`make tcb-report` regenerates them from the build and the README would only rot.
+
+A concurrency layer exists in Rocq (a CEK step machine with an adequacy theorem, a
+cooperative scheduler whose determinism comes from an injected schedule, and the HTTP server
+recovered under a concurrent acceptor and worker structure), but it stops at the Rocq
+boundary: no runtime realizer, no code generation path, no differential test yet.
+
+Where this fits the wider picture: rocqeteer is how the harness gets its strongest check,
+formal verification of the critical modules, in the loop described in
+[Keep the engineer in the loop](https://yann.regis-gianas.org/en/posts/harness-not-output/).
+It was built with the spec-driven methodology in
+[agentic-dev-kit](https://github.com/yurug/agentic-dev-kit).
+
+If you try it, tell me what broke. Issues, pull requests, and a plain "this made no sense to
+me" are all welcome.
 
 ## License
 
 MIT (see [`LICENSE`](LICENSE)).
-</content>
