@@ -38,11 +38,14 @@ codegen pattern-matches on it directly. See [[adr-0002-extraction-bridge]].
 
 ## Module structure (repo layout — `docs/layout.md` is authoritative)
 ```
-theories/            Rocq sources, FLAT (no subdirs): EffIR (the IR + reference interpreter +
-                     apply_prim), Wf (the R10 well-formedness checker), Elab/ElabNs (the ADR-0016
-                     tower elaborations), Cek/Sched/SchedHttp (the C5 concurrency machine +
-                     scheduler + driver), FileIO/SockIO (C3/C4 apps), Samples (the source-of-truth
-                     program list the codegen consumes), KV/Prims/Fold/Journal/... (proofs)
+theories/            The INSTALLED generic library, FLAT (no subdirs): EffIR (the IR + reference
+                     interpreter + apply_prim + the generic file/socket/concurrency ops), Wf (the
+                     R10 well-formedness checker), Elab/ElabNs (the ADR-0016 tower elaborations),
+                     Cek/Sched (the C5 concurrency machine + scheduler), Samples (generic demo
+                     programs), KV/Prims/Fold/Journal/... (proofs). Domain-independent — no app here.
+apps/                NON-installed (RocqeteerApps): applications built with the library —
+                     AppSamples (the app programs + the codegen's combined all_programs_full list),
+                     FileIO (wc), SockIO (HTTP/1.0), SchedHttp (concurrent HTTP driver)
 codegen/             OCaml codegen CLI: codegen.ml (driver), emit.ml/.mli (EffIR -> direct-style OCaml)
 extraction/          Extract-EffIR-and-reference directives (Extr.v) -> the ref_extracted library
 runtime/             Trusted OCaml realizers (kv, fileio, sockio, sched, time, err, env, trace,

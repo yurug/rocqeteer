@@ -1,20 +1,21 @@
 (* rocqeteer-codegen — the thin CLI driver (R10 v1 split, adr-0014-wf-checker): all
    emission logic and the wf gate live in the rocqeteer.codegen LIBRARY (emit.ml/.mli);
-   this executable only iterates rocqeteer's own single-source program list
-   [Samples.all_programs] (defined in Rocq, extracted) onto stdout. generated/dune
+   this executable only iterates rocqeteer's combined program list
+   [AppSamples.all_programs_full] (the generic Samples.all_programs followed by the
+   application programs; defined in Rocq, extracted) onto stdout. generated/dune
    promotes the output into the source tree; ci/check_generated_fresh.sh keeps it
    honest. A wf-gate rejection has already printed the loud message to stderr — exit
    nonzero so the whole build fails (adr-0014 §4, no opt-out).
 
-   With [--elab] (ADR-0016 mode K) it iterates [ElabNs.elab_full_programs]
+   With [--elab] (ADR-0016 mode K) it iterates [AppSamples.elab_full_programs_full]
    instead — the SAME list, pre-elaborated IN ROCQ by the proven FULL tower
    (consolidation elab_ns then Expiry elab; theories/ElabNs.v elab_full_simulates):
    no elaboration logic lives in this trusted driver. *)
 let () =
   let programs =
     if Array.length Sys.argv > 1 && Sys.argv.(1) = "--elab" then
-      Ref_extracted.ElabNs.elab_full_programs
-    else Ref_extracted.Samples.all_programs
+      Ref_extracted.AppSamples.elab_full_programs_full
+    else Ref_extracted.AppSamples.all_programs_full
   in
   try Rocqeteer_codegen.Emit.emit_programs Format.std_formatter programs
   with Rocqeteer_codegen.Emit.Codegen_error _ -> exit 1

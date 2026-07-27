@@ -17,7 +17,7 @@
     coreutils `wc -c` by tests/diff_file.ml, through real files). *)
 From Stdlib Require Import ZArith List Ascii String.
 From Rocqeteer Require Import EffIR Samples.
-From RocqeteerApps Require Import FileIO.
+From RocqeteerApps Require Import AppSamples FileIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

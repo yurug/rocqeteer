@@ -8,7 +8,7 @@
 
 From Stdlib Require Import ZArith List String Ascii Bool Lia.
 From Rocqeteer Require Import EffIR Samples Journal Wf.
-From RocqeteerApps Require Import FileIO.
+From RocqeteerApps Require Import AppSamples FileIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

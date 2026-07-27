@@ -14,7 +14,7 @@
     serves real clients with the same proven core. *)
 From Stdlib Require Import ZArith List Ascii String.
 From Rocqeteer Require Import EffIR Samples.
-From RocqeteerApps Require Import SockIO.
+From RocqeteerApps Require Import AppSamples SockIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

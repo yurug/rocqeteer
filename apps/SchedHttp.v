@@ -28,7 +28,7 @@
 
 From Stdlib Require Import List ZArith Ascii Lia.
 From Rocqeteer Require Import EffIR Cek Sched Samples.
-From RocqeteerApps Require Import SockIO.
+From RocqeteerApps Require Import AppSamples SockIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

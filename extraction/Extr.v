@@ -1,5 +1,6 @@
 From Stdlib Require Import Extraction.
 From Rocqeteer Require Import EffIR Samples Wf Elab ElabNs Sched.
+From RocqeteerApps Require Import AppSamples.
 Extraction Language OCaml.
 (* all_programs is the single source of truth: extracting it pulls every referenced sample
    as a named value (so the tests can still use Samples.sample_X), and the codegen iterates
@@ -12,9 +13,13 @@ Extraction Language OCaml.
    codegen emits into generated/progk_generated.ml: it runs against KERNEL realizers
    only (Kv.run_kernel: no deadline logic, no clock, no cache/journal realizers). *)
 Separate Extraction
-  Samples.all_programs
-  Elab.elab Elab.elab_programs
-  ElabNs.elab_ns ElabNs.elab_full ElabNs.elab_full_programs
+  (* The codegen's source-of-truth is the COMBINED list (generic Samples.all_programs ++
+     the applications), defined in RocqeteerApps.AppSamples so the installed theories/
+     library carries no application programs.  Extracting it pulls every referenced
+     sample as a named value (generic ones into Samples.ml, applications into
+     AppSamples.ml).  The two proven tower elaborations over the same list drive mode-K. *)
+  AppSamples.all_programs_full AppSamples.elab_programs_full AppSamples.elab_full_programs_full
+  Elab.elab ElabNs.elab_ns ElabNs.elab_full
   EffIR.prog0 EffIR.observe EffIR.observe_full EffIR.run
   EffIR.run_file EffIR.observe_file EffIR.run_sock EffIR.observe_sock
   Wf.wf_tm Wf.wf_val Wf.op_arity Wf.prim_arity Wf.pat_binders

@@ -21,7 +21,7 @@
 
 module E = Ref_extracted.EffIR
 module D = Ref_extracted.Datatypes
-module S = Ref_extracted.Samples
+module S = Ref_extracted.AppSamples
 module Gen = Generated.Prog0_generated
 module GenK = Generated.Progk_generated  (* mode K: pre-elaborated (adr-0016) *)
 

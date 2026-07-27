@@ -19,6 +19,7 @@
 
 From Stdlib Require Import ZArith List String Ascii Bool Lia FMapFacts OrderedTypeEx.
 From Rocqeteer Require Import EffIR Samples Journal.
+From RocqeteerApps Require Import AppSamples.
 Import ListNotations.
 Local Open Scope Z_scope.
 

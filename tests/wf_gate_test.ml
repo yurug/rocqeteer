@@ -49,7 +49,7 @@ let () =
   let buf2 = Buffer.create 65536 in
   let fmt2 = Format.formatter_of_buffer buf2 in
   (match
-     Rocqeteer_codegen.Emit.emit_programs fmt2 Ref_extracted.Samples.all_programs
+     Rocqeteer_codegen.Emit.emit_programs fmt2 Ref_extracted.AppSamples.all_programs_full
    with
    | () -> ()
    | exception Rocqeteer_codegen.Emit.Codegen_error msg ->

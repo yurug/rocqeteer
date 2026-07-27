@@ -15,9 +15,10 @@
   List.ml List.mli Nat.ml Nat.mli OrderedTypeEx.ml OrderedTypeEx.mli
   OrderedType.ml OrderedType.mli Orders.ml Orders.mli OrdersTac.ml OrdersTac.mli
   PeanoNat.ml PeanoNat.mli PosDef.ml PosDef.mli Samples.ml Samples.mli
+  AppSamples.ml AppSamples.mli
   Sched.ml Sched.mli Specif.ml Specif.mli
   String.ml String.mli Wf.ml Wf.mli)
- (theories Rocqeteer Stdlib))
+ (theories Rocqeteer RocqeteerApps Stdlib))
 
 ; Extracted OCaml is machine-generated; silence its warnings (-w -a) but keep it a real
 ; compiled library so any type breakage in the bridge is a loud compile error.
@@ -26,6 +27,6 @@
  (public_name rocqeteer.extracted)
  (modules
   Ascii BinInt BinNat BinNums BinPos Bool Cek Datatypes EffIR Elab ElabNs FMapAVL FMapList Int
-  ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PeanoNat PosDef Samples
+  ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PeanoNat PosDef Samples AppSamples
   Sched Specif String Wf)
  (flags (:standard -w -a)))
