@@ -560,3 +560,28 @@ native concurrent HTTP server binary + real-TCP differential. Only reserved item
 re-derivation of drv_concurrent_matches through the multi-fiber channel plumbing (theory statement boundary,
 no new TCB). Backlog (unrelated to C5): redoq mode-K CI leg + bench at next pin bump; PCountByte (wc -l);
 mode-K over file/socket samples.
+
+## 2026-07-27 (cont.) — backlog completeness: PCountByte (wc -l) + mode-K file/socket legs
+User chose "backlog completeness" at the C5-complete milestone. Two of three items done (the third,
+redoq's mode-K CI leg, lives in the separate redoq repo and is gated on its next pin bump — not
+actionable here).
+**PCountByte (commit e587786):** the C3 rider prim (wc -l) end-to-end — EffIR count_byte/apply_count_byte
++ apply_prim case, Wf arity 2, Prims.v proofs (axiom-free: count_byte_app distributes over concat = the
+count-level chunking invariance, wc-l samples, mod-256 wrap, shape/arity mismatch, target-load-bearing
+mutant, inhabitance), runtime prim_count_byte (Z.erem = reference Z.modulo on positive divisor), codegen
+emit, diff_prims random+fixed cases. Prim count corrected 16->18 in manifest/report.
+**mode-K file/socket legs:** mode K already GENERATES all file/socket samples (elab_full_programs maps over
+all_programs -> Progk_generated has sample_wc/sample_http/drv_*). Added differential LEGS running them under
+Kv.run_kernel: diff_file check_wc_k (fast_out_k: Env->Time.run->Kv.run_kernel->Fileio->Err; the wc counter
+"n" runs through the escaped u-region while real file ops pass through; 328 cases now, was 294) + diff_sock
+live_outputs ~kernel (Time.run+Kv.run_kernel replacing with_store_and_time; the http buffer through the
+u-region over real TCP; 3 mode-K cases). Validates the ADR-0016 tower COMPOSES with the file/socket effect
+families (store elaboration transparent; buffer/counter through u-region packing). Gotcha: with_store_and_time
+(entry table) and run_kernel (Rval.t table) need DIFFERENT table element types — each branch makes its own
+table. Manifest Store tests + TCB Consolidation-tower row updated. Full dune test exit 0; gates green.
+
+## Exact next step
+Backlog items 1-2 done. Remaining known work: redoq mode-K CI leg + bench (separate redoq repo, at next pin
+bump); the reserved C5 theory boundary (general re-derivation of drv_concurrent_matches through the channel
+plumbing, no new TCB). rocqeteer C-phase (towers + concurrency + apps) is complete and validated end-to-end;
+next strategic direction is open (new breadth, audit/polish for the public repo, or the theory boundary).

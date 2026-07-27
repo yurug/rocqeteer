@@ -103,6 +103,24 @@ let fast_out ?(sys = Rkv.Fileio.real_sys) (fn : unit -> Rkv.Rval.t)
           Rkv.Fileio.run_checked ~sys ~dir (fun () ->
               Rkv.Err.run_error fn)))
 
+(* MODE K (adr-0016): the SAME wc program pre-elaborated (Generated.Progk_generated)
+   run against the KERNEL store — the byte counter lives in the escaped u-region, so
+   this exercises the tower elaboration COMPOSED with the file family (the store
+   counter through u-region packing while real file ops pass through). No deadline /
+   cache / journal realizer in the stack: Time.run + Kv.run_kernel replace
+   with_store_and_time. *)
+module GenK = Generated.Progk_generated
+
+let fast_out_k ?(sys = Rkv.Fileio.real_sys) (fn : unit -> Rkv.Rval.t)
+    (dir : string) (operand : string) :
+    ((Rkv.Rval.t, Rkv.Rval.t) result, Rkv.Fileio.error) result =
+  let table = Rkv.Kv.T.create 8 in
+  Rkv.Env.run (Rkv.Rval.Bytes (Bytes.of_string operand)) (fun () ->
+      Rkv.Time.run (fun () -> Z.zero) (fun () ->
+          Rkv.Kv.run_kernel table (fun () ->
+              Rkv.Fileio.run_checked ~sys ~dir (fun () ->
+                  Rkv.Err.run_error fn))))
+
 let dir_listing dir =
   Sys.readdir dir |> Array.to_list |> List.sort compare
   |> List.map (fun n -> (n, read_file (Filename.concat dir n)))
@@ -145,6 +163,26 @@ let check_wc (label : string) (term : E.tm) (fn : unit -> Rkv.Rval.t)
     incr fails;
     Printf.printf "COREUTILS MISMATCH %s: wc -c says %s\n" label (Z.to_string wc))
 
+(* MODE K leg (adr-0016): run the pre-elaborated wc program (GenK) under Kv.run_kernel;
+   the byte counter lives in the escaped u-region while real file ops pass through. *)
+let check_wc_k (label : string) (term : E.tm) (fnk : unit -> Rkv.Rval.t)
+    (contents : bytes) =
+  let dir = fresh_dir () in
+  write_file dir "f" contents;
+  let r = ref_obs term "f" (Some contents) in
+  let f = fast_out_k fnk dir "f" in
+  let expected = Rkv.Rval.Int (Z.of_int (Bytes.length contents)) in
+  match r.out, f with
+  | Ok rv, Ok (Ok fv)
+    when Rkv.Rval.equal rv fv && Rkv.Rval.equal rv expected -> ()
+  | _, _ ->
+      incr fails;
+      Printf.printf "FILE MODE-K MISMATCH %s (RSEED=%d) size=%d\n  ref=%s fastk=%s\n"
+        label seed (Bytes.length contents) (show_out r.out)
+        (match f with
+         | Ok o -> show_out o
+         | Error e -> "ENV " ^ Rkv.Fileio.string_of_error e)
+
 (* --- corpus generators ---------------------------------------------------------- *)
 
 let gen_byte () =
@@ -181,6 +219,17 @@ let () =
     let n = Random.State.int rng 32769 in
     check_wc "sample_wc_big" S.sample_wc_big Gen.sample_wc_big (gen_contents n)
   done;
+
+  (* FK (adr-0016 mode K): the SAME wc program pre-elaborated, counter through the
+     kernel u-region, real files — the tower composes with the file family. Small +
+     big instances across the chunk-boundary corpus. *)
+  for n = 0 to 24 do
+    check_wc_k "sample_wc[K]" S.sample_wc GenK.sample_wc (gen_contents n)
+  done;
+  List.iter
+    (fun n -> check_wc_k "sample_wc_big[K]" S.sample_wc_big GenK.sample_wc_big
+                (gen_contents n))
+    [ 0; 1; 511; 512; 513; 1024; 8192; 20000; 32768 ];
 
   (* F8: the write path — bytes on DISK == the reference file region *)
   (let dir = fresh_dir () in
@@ -289,7 +338,7 @@ let () =
        print_endline "FI5 FAIL: external modification not detected at close");
 
   Printf.printf
-    "FILE cases=%d fails=%d | classes: F1-F7 corpora (boundaries, NUL, high bytes, huge), F8 disk==reference, F9 modeled errors, FI1-FI5 seam checks\n"
+    "FILE cases=%d fails=%d | classes: F1-F7 corpora (boundaries, NUL, high bytes, huge), F8 disk==reference, F9 modeled errors, FI1-FI5 seam checks, FK mode-K (counter through the u-region, real files)\n"
     !case_ctr !fails;
   if !fails = 0 then
     print_endline

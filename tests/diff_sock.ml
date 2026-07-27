@@ -23,6 +23,7 @@ module E = Ref_extracted.EffIR
 module D = Ref_extracted.Datatypes
 module S = Ref_extracted.Samples
 module Gen = Generated.Prog0_generated
+module GenK = Generated.Progk_generated  (* mode K: pre-elaborated (adr-0016) *)
 
 let seed = try int_of_string (Sys.getenv "RSEED") with _ -> 20260723
 let rng = Random.State.make [| seed |]
@@ -123,7 +124,7 @@ let read_recorded (outfile : string) : string list =
 (** Run the generated server over a real listener against forked scripted
     clients; [close_after] connections, then close the listener so the server's
     remaining fuel takes the exhausted-VALUE path. *)
-let live_outputs ?(sys = Rkv.Sockio.real_sys) (fn : unit -> 'a)
+let live_outputs ?(sys = Rkv.Sockio.real_sys) ?(kernel = false) (fn : unit -> 'a)
     (script : string list) :
     (string list, Rkv.Sockio.error) result =
   let listener, port = mk_listener () in
@@ -136,7 +137,20 @@ let live_outputs ?(sys = Rkv.Sockio.real_sys) (fn : unit -> 'a)
       (try run_clients port script outfile with _ -> ());
       exit 0
   | pid ->
-      let table = Rkv.Kv.T.create 8 in
+      (* [kernel]=MODE K (adr-0016): run the pre-elaborated server against the KERNEL
+         store (Time.run + Kv.run_kernel, no deadline/cache/journal realizer) — the
+         per-connection buffer lives in the escaped u-region, so this exercises the
+         tower elaboration COMPOSED with the socket family over real TCP.  The two
+         stacks need different table element types (entry vs Rval.t), so each makes its
+         own table. *)
+      let store_wrap f =
+        if kernel then
+          let table = Rkv.Kv.T.create 8 in
+          Rkv.Time.run (fun () -> Z.zero) (fun () -> Rkv.Kv.run_kernel table f)
+        else
+          let table = Rkv.Kv.T.create 8 in
+          Rkv.Runtime.with_store_and_time ~source:(fun () -> Z.zero) table f
+      in
       (* HARNESS CONTRACT: [length script] equals the sample's accept fuel, so
          the server's loop exits exactly when the last client is served and the
          accept never blocks on a missing (n+1)-th connection.  The exhausted-
@@ -144,8 +158,7 @@ let live_outputs ?(sys = Rkv.Sockio.real_sys) (fn : unit -> 'a)
          empty script). *)
       let result =
         Rkv.Env.run ctx_rval (fun () ->
-            Rkv.Runtime.with_store_and_time ~source:(fun () -> Z.zero) table
-              (fun () ->
+            store_wrap (fun () ->
                 Rkv.Sockio.run_checked ~sys ~timeout:5.0 ~listener (fun () ->
                     Rkv.Err.run_error fn)))
       in
@@ -158,9 +171,10 @@ let live_outputs ?(sys = Rkv.Sockio.real_sys) (fn : unit -> 'a)
                     ("program threw: " ^ Rkv.Rval.to_string e))
        | Error e -> Error e)
 
-let check name (term : E.tm) (fn : unit -> 'a) (script : string list) =
+let check ?(kernel = false) name (term : E.tm) (fn : unit -> 'a)
+    (script : string list) =
   let r = ref_outputs term script in
-  match live_outputs fn script with
+  match live_outputs ~kernel fn script with
   | Ok l ->
       if l <> r then begin
         incr fails;
@@ -262,8 +276,17 @@ let () =
         | _ ->
             incr fails;
             print_endline "FI2 FAIL: stalled client did not abort environmentally"));
+  (* SK (adr-0016 mode K): the SAME server pre-elaborated, per-connection buffer
+     through the kernel u-region, over real TCP — the tower composes with the socket
+     family. Same reference (elab is observationally transparent). *)
+  check ~kernel:true "hit/miss/bad[K]" S.sample_http GenK.sample_http
+    [ get "/x"; get "/nope"; "junk" ];
+  check ~kernel:true "nul/empty/hit[K]" S.sample_http GenK.sample_http
+    [ get "/nul\x00"; ""; get "/" ];
+  check ~kernel:true "straddle[K]" S.sample_http GenK.sample_http
+    [ "GET / HTTP1.0\r\n\r\n"; get "/"; get "/big" ];
   Printf.printf "SOCK checks done, fails=%d\n" !fails;
   if !fails = 0 then
     print_endline
-      "SOCK DIFFERENTIAL OK: reference == generated over real loopback TCP (record-and-replay); one-shot contract, short-recv seam, and the timeout backstop hold"
+      "SOCK DIFFERENTIAL OK: reference == generated == mode-K (buffer through the u-region) over real loopback TCP (record-and-replay); one-shot contract, short-recv seam, and the timeout backstop hold"
   else exit 1
