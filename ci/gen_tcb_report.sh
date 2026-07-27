@@ -34,6 +34,9 @@ assum_fold=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd"
 printf 'From Rocqeteer Require Import Journal.\nPrint Assumptions run_journal_frame.\n' > "$tmpd/CheckJ.v"
 assum_journal=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckJ.v" 2>&1 \
           | grep -iE "closed under the global context|axioms:" | head -1 || true)
+printf 'From Rocqeteer Require Import Sched.\nPrint Assumptions conc_free_embeds.\n' > "$tmpd/CheckC.v"
+assum_sched=$(coqc -R _build/default/theories Rocqeteer -output-directory "$tmpd" "$tmpd/CheckC.v" 2>&1 \
+          | grep -iE "closed under the global context|axioms:" | head -1 || true)
 rm -rf "$tmpd"
 [ -z "$assum" ] && assum="(capture failed)"
 [ -z "$assum_bytes" ] && assum_bytes="(capture failed)"
@@ -42,6 +45,7 @@ rm -rf "$tmpd"
 [ -z "$assum_timestore" ] && assum_timestore="(capture failed)"
 [ -z "$assum_fold" ] && assum_fold="(capture failed)"
 [ -z "$assum_journal" ] && assum_journal="(capture failed)"
+[ -z "$assum_sched" ] && assum_sched="(capture failed)"
 
 dune build extraction/ generated/ >/dev/null 2>&1 || true
 objmagic=$(grep -rl "Obj.magic" _build/default/extraction _build/default/generated codegen runtime support tests generated 2>/dev/null | wc -l | tr -d ' ')
@@ -67,6 +71,7 @@ echo "- \`Print Assumptions tag_build_success\`: **${assum_structval}**"
 echo "- \`Print Assumptions alive_at_deadline\` (R4+R5 boundary, live iff now<=d): **${assum_timestore}**"
 echo "- \`Print Assumptions fold_mixed_end_to_end\` (R6 Fold, effectful left fold): **${assum_fold}**"
 echo "- \`Print Assumptions run_journal_frame\` (R9 Journal frame law, GENERAL — journal is write-only): **${assum_journal}**"
+echo "- \`Print Assumptions conc_free_embeds\` (C5 adr-0019, GENERAL — every conc-free program embeds into the scheduler as big-step run): **${assum_sched}**"
 echo "- Admitted/admit files in theories/: **${admitted}** (must be 0)"
 echo "- Rocq Axioms declared: **0** (refinement is a documented manifest assumption, not a Rocq axiom)"
 echo
@@ -115,6 +120,8 @@ echo "| Runtime_FS_open_inode_stable | assumption (tcb-assumption) | held-open c
 echo "| Runtime_FileRead_full / Runtime_FileWrite_full | assumption (tcb-assumption) | realizer loops discharge short reads/writes + EINTR; reference chunk realized verbatim | diff_file (sys-seam interposition) |"
 echo "| Socket (Accept/Recv/Send/CloseConn; adr-0018 — connection-script oracle, ONE-SHOT half-close contract, timeout backstop) | effect — kernel-v1 (syscall-backed) | Rkv.Sockio | diff_sock |"
 echo "| Runtime_Sock_script_faithful / Runtime_SockRecv_full / Runtime_SockSend_full | assumption (tcb-assumption) | script = what clients sent (record-and-replay validated; TCP ordered-reliable per connection); full recv/send loops; timeout converts stalls to loud aborts | diff_sock (real loopback TCP) |"
+echo "| Concurrency (Spawn/Yield/ChanMake/ChanSend/ChanRecv; adr-0019 — Effect.Deep cooperative scheduler, injected schedule oracle, one-shot continuations, channels-only sharing, deadlock=Stuck value) | effect — runtime-irreducible BUT faithfulness proven (Sched.conc_free_embeds/seq_embedding_cf) AND tested | Rkv.Sched | diff_sched |"
+echo "| Runtime_Sched_faithful | assumption (tcb-assumption) | same injected schedule => same observable (trace + outcomes + deadlock verdict) as reference Sched.run_sched; one-shot continuations (invariant 7); determinism per-schedule (mutant = a scheduler ignoring the order) | diff_sched (record-and-replay: 20 proven + adversarial schedules vs extracted run_sched) |"
 echo "| Time (Now; injectable source, wall clock default) | effect — kernel-v1 | Rkv.Time | diff_time |"
 echo "| Runtime_KV_refines | assumption (tcb-assumption) | reference == fast (live bindings, deadlines incl.) | diff_test, diff_kv (5000 adversarial), diff_store (3000; d-1/d/d+1 per key) |"
 echo "| Runtime_SingleTimeSource_refines | assumption (tcb-assumption) | store-now == time-now, one source instance; test source steps only between runs | diff_time (3000; reference-now == fast-source-now per run) |"

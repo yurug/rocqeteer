@@ -1,5 +1,5 @@
 From Stdlib Require Import Extraction.
-From Rocqeteer Require Import EffIR Samples Wf Elab ElabNs.
+From Rocqeteer Require Import EffIR Samples Wf Elab ElabNs Sched.
 Extraction Language OCaml.
 (* all_programs is the single source of truth: extracting it pulls every referenced sample
    as a named value (so the tests can still use Samples.sample_X), and the codegen iterates
@@ -17,4 +17,9 @@ Separate Extraction
   ElabNs.elab_ns ElabNs.elab_full ElabNs.elab_full_programs
   EffIR.prog0 EffIR.observe EffIR.observe_full EffIR.run
   EffIR.run_file EffIR.observe_file EffIR.run_sock EffIR.observe_sock
-  Wf.wf_tm Wf.wf_val Wf.op_arity Wf.prim_arity Wf.pat_binders.
+  Wf.wf_tm Wf.wf_val Wf.op_arity Wf.prim_arity Wf.pat_binders
+  (* C5 (adr-0019): the reference scheduler + its proven sample states, for the
+     runtime differential (tests/diff_sched.ml runs the OCaml Sched realizer against
+     these and asserts equal observables). *)
+  Sched.run_sched Sched.sresult_of Sched.swld Sched.sfib Sched.sdone
+  Sched.nb Sched.bodies_sp Sched.s_int Sched.s_pc Sched.s_dead Sched.s_sp.

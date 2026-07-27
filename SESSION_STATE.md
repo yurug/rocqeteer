@@ -485,3 +485,42 @@ immediate-block, ping-pong, deadlock) + runtime-manifest/TCB entries for the sch
 statement boundary: re-deriving drv_concurrent_matches GENERALLY through the multi-fiber channel plumbing
 (§B is concrete-only). Still pending from earlier: redoq mode-K CI leg + bench at next pin bump;
 PCountByte (wc -l); mode-K over file/socket samples.
+
+## 2026-07-27 — C5 OCaml runtime scheduler + differential (the runtime leg, TCB-expanding)
+The remaining C5 item, gated on its own review — now delivered. TCB expands by one realizer (Rkv.Sched);
+manifest + TCB-report rows added; all gates green.
+**runtime/sched.ml + .mli — the Effect.Deep cooperative scheduler:** 5 conc ops as effects; the deep
+handler PARKS each one-shot continuation (invariant 7 — `Effect.Deep.continue` at most once) and returns
+control to a scheduler LOOP driven by the INJECTED schedule (determinism by injection, mirroring
+Sched.run_sched's oracle; NOT a free runtime choice). Channels-only sharing (no shared memory). One slot =
+advance one fiber to its next scheduling point, act on the op, re-park. Subtlety that bit once and was
+fixed: a ChanRecv DELIVERY and its continuation must land in DIFFERENT slots (the reference parks
+FR(ORet v) k and defers k to the next sched_one) — so the recv branch parks `fun()->res v` deferred and
+NEVER runs the continuation eagerly in the delivery slot (initial `blocked` closure did, breaking schedule
+[2;2;1;2;1]). Deadlock = schedule leaves fibers live = Stuck value, never a hang. Trace/store/socket leaf
+effects propagate to ENCLOSING handlers. No Eio dep (stdlib Effect only, adr-0003), no C stubs.
+**tests/diff_sched.ml — record-and-replay differential:** native realizer vs EXTRACTED Sched.run_sched
+under the SAME injected schedule; compares trace (interleaved order), completed outcomes, and deadlock
+verdict (sresult_of). 20 cases: proven instances (interleaving_121/producer_consumer/deadlock/spawn_runs)
++ adversarial (starvation [1;1;1;1], immediate-block [2;2;...], ping-pong [1;2;1;2], short-deadlock). 0
+fails. Native fibers mirror the Coq fA/fB/fProd/fCons/fD1/fD2/fSp/bodies_sp exactly; Trace.run wraps
+Sched.run so OTrace propagates out like the shared world.trace.
+**Extraction extended:** extraction/Extr.v exports Sched.run_sched/sresult_of/swld/sfib/sdone/nb/bodies_sp
++ sample states s_int/s_pc/s_dead/s_sp; extraction/dune adds Cek + Sched modules. Full `dune test` green
+(the shared ref_extracted lib change broke nothing).
+**Manifest/TCB:** docs/runtime_manifest.toml [effect."Concurrency"] (Rkv.Sched, discharge =
+runtime-irreducible but faithfulness proven via conc_free_embeds/seq_embedding_cf AND tested via diff_sched)
++ [assumption."Runtime_Sched_faithful"]. ci/gen_tcb_report.sh: added the Concurrency + Runtime_Sched_faithful
+rows and a `Print Assumptions conc_free_embeds` proof-TCB line (Closed under the global context). Gates:
+no-admitted, no-objmagic, stray-perform (the scheduler's Effect.perform is confined to runtime/), tcb,
+generated-fresh — all OK. Commit the regenerated docs/tcb_report.md (check_tcb flags the drift until committed).
+
+## Exact next step (post runtime scheduler)
+C5 is COMPLETE end-to-end: reference semantics + CEK adequacy + scheduler + conc-free embedding law +
+concurrent driver (theory) + OCaml Effect.Deep realizer + differential + manifest/TCB. Reserved follow-ups
+(not blocking): (1) nest the socket handler around Rkv.Sched to run SchedHttp.drv_* natively end-to-end (a
+real concurrent HTTP server binary), differential vs observe_sock — the pure conc-op observable is already
+validated by diff_sched, socket ops by diff_sock, so this is integration glue. (2) Re-derive
+drv_concurrent_matches GENERALLY through the channel plumbing (the reserved statement boundary). Still
+pending from earlier: redoq mode-K CI leg + bench at next pin bump; PCountByte (wc -l); mode-K over
+file/socket samples.

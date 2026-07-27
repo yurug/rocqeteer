@@ -141,7 +141,7 @@ C5.1 spike.** This is the C1 pattern (attempt the strong theorem, named fallback
 - Wf checker gains the op arities only; no typing changes (the fiber-body-by-index decision keeps `tm`
   unchanged).
 
-## Delivered (theory; OCaml runtime still gated on its own review)
+## Delivered (theory + OCaml runtime realizer)
 - **Machine + adequacy** (`theories/Cek.v`): the defunctionalized frame-stack step machine over the same
   `tm`; `cek_adequate`/`cek_drive_run` — the executable fuel driver computes big-step `run` for EVERY
   program. Axiom-free.
@@ -161,3 +161,18 @@ C5.1 spike.** This is the C1 pattern (attempt the strong theorem, named fallback
   EXACT `expected_log` under a run-to-completion schedule; `drv_worker_starved` is the schedule-is-load-
   bearing mutant. Re-deriving (B) generally through the channel plumbing is the reserved statement
   boundary; (A) is the general law for the single-fiber recovery.
+- **The OCaml runtime scheduler** (`runtime/sched.ml` + `.mli`): a cooperative fiber scheduler over stdlib
+  `Effect.Deep` (NO Eio dep — adr-0003 unchanged; no C stubs). The deep handler PARKS each one-shot
+  continuation (invariant 7) and returns control to a loop driven by the INJECTED schedule (determinism by
+  injection, mirroring `run_sched`); channels are the only sharing; a schedule that leaves fibers live is
+  the `Stuck` value (deadlock never hangs). One schedule slot = advance one fiber to its next scheduling
+  point, act on the op, re-park — a `ChanRecv` delivery and its continuation land in DIFFERENT slots, matching
+  `sched_one`.
+- **The differential** (`tests/diff_sched.ml`): the native realizer vs the EXTRACTED `Sched.run_sched` under
+  the SAME injected schedule — trace, completed outcomes, and the deadlock verdict compared. 20 cases: the
+  proven instances (`interleaving_121`/`producer_consumer`/`deadlock`/`spawn_runs`) plus adversarial
+  schedules (starvation, immediate-block, ping-pong, short-deadlock). Extraction extended to `Sched`
+  (`extraction/Extr.v`); manifest `[effect."Concurrency"]` + `Runtime_Sched_faithful` assumption + TCB-report
+  rows added. Reserved next: nesting the socket handler to run the concurrent HTTP driver (`SchedHttp.drv_*`)
+  natively end-to-end (the pure conc-op observable is what `diff_sched` validates; socket ops are already
+  covered by `diff_sock`).

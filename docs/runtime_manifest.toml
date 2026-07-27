@@ -115,6 +115,23 @@ validated_by = ["diff_sock (responses received whole, incl. 2000-byte bodies)"]
 review_label = "tcb-assumption"
 owner        = "yann"
 
+[effect."Concurrency"]
+ocaml_module = "Rkv.Sched"
+ops          = ["Spawn", "Yield", "ChanMake", "ChanSend", "ChanRecv"]
+backend      = "Cooperative fiber scheduler over stdlib Effect.Deep (NO Eio dep — adr-0003 budget unchanged; no C stubs). The deep handler PARKS each ONE-SHOT continuation (invariant 7: continued at most once, never multi-shot) and returns control to a scheduler LOOP driven by an INJECTED schedule (a fiber-id sequence — the reference Sched.run_sched's oracle; determinism BY INJECTION, not by a free runtime choice). Channels are the ONLY sharing (no shared-memory op — no data race representable). One schedule slot advances one fiber from one scheduling point to the next, acts on the op it lands on, and re-parks; an empty ChanRecv BLOCKS with no progress (re-checks next slot). A schedule that leaves fibers live is the Stuck VALUE — deadlock is never a hang. Trace/store/socket leaf effects propagate to ENCLOSING handlers (the scheduler intercepts only the five conc ops)"
+result_types = "Spawn i: Int(new fiber id); Yield: Unit; ChanMake: Int(new chan id); ChanSend: Unit; ChanRecv: the dequeued value"
+discharge    = "runtime-irreducible (adr-0016 §6; adr-0019) BUT the realizer's faithfulness is BOTH proven and tested: the reference is theories/Sched.v run_sched; the sequential fragment embeds BY LAW (Sched.conc_free_embeds / seq_embedding_cf — a conc-free fiber's run_to_sched IS the CEK driver, so http_driver_seq recovers SockIO.http_prog_correct under the scheduler); the concurrent bookkeeping (spawn/channels/interleaving/deadlock) is validated by diff_sched (native realizer == extracted run_sched over proven AND adversarial schedules)"
+tests        = ["diff_sched"]
+owner        = "yann"
+
+[assumption."Runtime_Sched_faithful"]
+statement    = "under the SAME injected schedule, the OCaml Rkv.Sched realizer produces the SAME observable as the reference Sched.run_sched — trace (in interleaved order), completed-fiber outcomes, and the deadlock verdict (sresult_of). Determinism is per-schedule (the mutant is a scheduler that ignores the injected order — cf. Sched.schedule_matters). Continuations are ONE-SHOT (invariant 7). Validated by RECORD-AND-REPLAY (the fast side takes the injected schedule; the reference replays it), NOT blindly trusted"
+reference    = "theories/Sched.v run_sched (schedule oracle; run_to_sched over the CEK machine)"
+fast         = "Rkv.Sched.run: Effect.Deep handler + ready/blocked queues, one-shot continue"
+validated_by = ["diff_sched (20 cases: interleaving_121 + producer_consumer + deadlock + spawn_runs proven instances, plus adversarial starvation/immediate-block/ping-pong/short-deadlock schedules; trace + outcomes + Stuck verdict compared to extracted run_sched)"]
+review_label = "tcb-assumption"
+owner        = "yann"
+
 [effect."Time"]
 ocaml_module = "Rkv.Time"
 ops          = ["Now"]

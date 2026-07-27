@@ -9,12 +9,13 @@
  (prelude Extr)
  (extracted_files
   Ascii.ml Ascii.mli BinInt.ml BinInt.mli BinNat.ml BinNat.mli BinNums.ml BinNums.mli
-  BinPos.ml BinPos.mli Bool.ml Bool.mli
+  BinPos.ml BinPos.mli Bool.ml Bool.mli Cek.ml Cek.mli
   Datatypes.ml Datatypes.mli EffIR.ml EffIR.mli Elab.ml Elab.mli ElabNs.ml ElabNs.mli FMapAVL.ml FMapAVL.mli
   FMapList.ml FMapList.mli Int.ml Int.mli ListDef.ml ListDef.mli
   List.ml List.mli Nat.ml Nat.mli OrderedTypeEx.ml OrderedTypeEx.mli
   OrderedType.ml OrderedType.mli Orders.ml Orders.mli OrdersTac.ml OrdersTac.mli
-  PeanoNat.ml PeanoNat.mli PosDef.ml PosDef.mli Samples.ml Samples.mli Specif.ml Specif.mli
+  PeanoNat.ml PeanoNat.mli PosDef.ml PosDef.mli Samples.ml Samples.mli
+  Sched.ml Sched.mli Specif.ml Specif.mli
   String.ml String.mli Wf.ml Wf.mli)
  (theories Rocqeteer Stdlib))
 
@@ -24,7 +25,7 @@
  (name ref_extracted)
  (public_name rocqeteer.extracted)
  (modules
-  Ascii BinInt BinNat BinNums BinPos Bool Datatypes EffIR Elab ElabNs FMapAVL FMapList Int
+  Ascii BinInt BinNat BinNums BinPos Bool Cek Datatypes EffIR Elab ElabNs FMapAVL FMapList Int
   ListDef List Nat OrderedTypeEx OrderedType Orders OrdersTac PeanoNat PosDef Samples
-  Specif String Wf)
+  Sched Specif String Wf)
  (flags (:standard -w -a)))
