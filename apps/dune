@@ -1,0 +1,7 @@
+; Application theories: proofs about SPECIFIC programs (wc, the HTTP/1.0 server, the
+; concurrent HTTP driver) built WITH the generic Rocqeteer library. Deliberately NOT
+; installed (no (package ...)): the installed `rocqeteer` Rocq theory stays a
+; domain-independent library — applications live here, out of it.
+(rocq.theory
+ (name RocqeteerApps)
+ (theories Rocqeteer Stdlib))

@@ -27,7 +27,8 @@
     the concrete witness, §A gives the general law for the single-fiber embedding. *)
 
 From Stdlib Require Import List ZArith Ascii Lia.
-From Rocqeteer Require Import EffIR Cek Sched Samples SockIO.
+From Rocqeteer Require Import EffIR Cek Sched Samples.
+From RocqeteerApps Require Import SockIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

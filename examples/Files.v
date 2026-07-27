@@ -16,7 +16,8 @@
     Deep dive: theories/FileIO.v; the tool is tools/rwc.ml (compared against
     coreutils `wc -c` by tests/diff_file.ml, through real files). *)
 From Stdlib Require Import ZArith List Ascii String.
-From Rocqeteer Require Import EffIR Samples FileIO.
+From Rocqeteer Require Import EffIR Samples.
+From RocqeteerApps Require Import FileIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

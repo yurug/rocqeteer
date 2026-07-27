@@ -13,7 +13,8 @@
     scripts over REAL loopback TCP against the generated server, and tools/rhttpd
     serves real clients with the same proven core. *)
 From Stdlib Require Import ZArith List Ascii String.
-From Rocqeteer Require Import EffIR Samples SockIO.
+From Rocqeteer Require Import EffIR Samples.
+From RocqeteerApps Require Import SockIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 

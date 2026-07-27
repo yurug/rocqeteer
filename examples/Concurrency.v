@@ -19,7 +19,8 @@
     schedules against the extracted [run_sched], and tools/rhttpd_conc runs the same
     fibers over REAL TCP via the OCaml [Effect.Deep] scheduler realizer. *)
 From Stdlib Require Import ZArith List Ascii.
-From Rocqeteer Require Import EffIR Samples SockIO Sched SchedHttp.
+From Rocqeteer Require Import EffIR Samples Sched.
+From RocqeteerApps Require Import SockIO SchedHttp.
 Import ListNotations.
 Local Open Scope Z_scope.
 

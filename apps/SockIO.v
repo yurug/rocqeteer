@@ -7,7 +7,8 @@
     validator of the program's de Bruijn plumbing, ahead of the general theorem. *)
 
 From Stdlib Require Import ZArith List String Ascii Bool Lia.
-From Rocqeteer Require Import EffIR Samples Journal Wf FileIO.
+From Rocqeteer Require Import EffIR Samples Journal Wf.
+From RocqeteerApps Require Import FileIO.
 Import ListNotations.
 Local Open Scope Z_scope.
 
