@@ -129,6 +129,13 @@ let rec emit_val (env : string list) (v : coq_val) : string =
    silent cast. Key arguments use [emit_key] (bytes); value arguments use [emit_val]
    (Rval.t); [OSetDeadline]'s deadline argument is a val (VNone | VSome (VInt d)) and
    goes through [emit_val] unchanged (adr-0011 — no new val constructors). *)
+(* Coerce a val to a [Z.t] argument (channel id / spawn body index) for the [Rkv.Sched]
+   wrappers — the reference reads these as [DInt _] (eval_val); a non-[Int] is [Rval.Stuck]
+   (the [Dstuck] boundary). *)
+let emit_z_of_val (env : string list) (v : coq_val) : string =
+  Printf.sprintf "(match %s with Rval.Int _z -> _z | _ -> raise Rval.Stuck)"
+    (emit_val env v)
+
 let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   match o, args with
   | OGet,    [k]     -> Printf.sprintf "(Kv.get %s)" (emit_key env k)
@@ -155,6 +162,15 @@ let emit_perform (env : string list) (o : op) (args : coq_val list) : string =
   | ORecv,   [c; n]  -> Printf.sprintf "(Sockio.recv %s %s)" (emit_val env c) (emit_val env n)
   | OSend,   [c; b]  -> Printf.sprintf "(Sockio.send %s %s)" (emit_val env c) (emit_val env b)
   | OCloseConn, [c]  -> Printf.sprintf "(Sockio.close_conn %s)" (emit_val env c)
+  (* C5 (adr-0019): the concurrency family. Channel ids and the spawn body index are
+     [Z.t] on the [Rkv.Sched] side, so the val (an [Rval.t]) is coerced with the same
+     shape check the reference makes ([DInt c] via eval_val; a mismatch is [Rval.Stuck],
+     the [Dstuck] boundary). The 5 ops become effects PARKED by the scheduler handler. *)
+  | OSpawn,    [b]   -> Printf.sprintf "(Sched.spawn %s)" (emit_z_of_val env b)
+  | OYield,    []    -> "(Sched.yield ())"
+  | OChanMake, []    -> "(Sched.chan_make ())"
+  | OChanSend, [c; v] -> Printf.sprintf "(Sched.chan_send %s %s)" (emit_z_of_val env c) (emit_val env v)
+  | OChanRecv, [c]   -> Printf.sprintf "(Sched.chan_recv %s)" (emit_z_of_val env c)
   | _ -> raise (Codegen_error "effect operation applied at the wrong arity")
 
 (* [emit_branch] compiles one branch (adr-0008 §Decision 4 chaining scheme).

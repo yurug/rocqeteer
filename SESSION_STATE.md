@@ -524,3 +524,39 @@ validated by diff_sched, socket ops by diff_sock, so this is integration glue. (
 drv_concurrent_matches GENERALLY through the channel plumbing (the reserved statement boundary). Still
 pending from earlier: redoq mode-K CI leg + bench at next pin bump; PCountByte (wc -l); mode-K over
 file/socket samples.
+
+## 2026-07-27 (cont.) — C5 native concurrent HTTP server (the differentiator, end-to-end)
+The reserved capstone: certified concurrency RUNS as a real server. Composes the scheduler realizer
+(diff_sched) + socket realizer (diff_sock) into one end-to-end proven-transcript claim.
+**Codegen conc ops (codegen/emit.ml):** the 5 conc ops lower to Rkv.Sched.{spawn,yield,chan_make,chan_send,
+chan_recv}; channel-id/spawn-index val args coerce Rval.Int->Z.t via emit_z_of_val (the reference's DInt
+shape check, Dstuck boundary). Only ChanSend/ChanRecv are actually used by the driver fibers; all 5 added
+for completeness.
+**The fibers are GENERATED (proven core):** moved acceptor/worker into theories/Samples.v (drv_acceptor =
+acceptor 3, drv_worker = worker 3 8 7) + all_programs, so codegen emits them into Generated.Prog0_generated;
+SchedHttp.v now references Samples.acceptor/worker (one definition, proven in SchedHttp, generated from
+Samples) — SchedHttp still 4x axiom-free. drv_worker generates the FULL http_handle (buffer/recv-loop/parse/
+send/close) — the proven handler, not reimplemented.
+**tools/rhttpd_conc.ml:** nests Env->Store->Sockio->Err->Sched.run [acceptor;worker] over real TCP. A
+fiber's socket/store/throw effects propagate OUT of the Sched handler (None for them) to the enclosing
+realizer — the diff_sched Trace-nesting pattern. Generated Repeat returns unit; fibers wrapped to Rval.Unit.
+**tests/diff_sched_http.ml:** forks 3 real one-shot TCP clients, runs the concurrent server, asserts the
+transcript == extracted observe_sock sample_http (= http_prog_correct, transferred by drv_concurrent_matches).
+4 cases (hit/miss/bad, nul/empty/hit, all-hit, all-bad), 0 fails.
+**KEY schedule fix:** with REAL BLOCKING accept, [1;2] alternation DEADLOCKS: the scheduler DEFERS a recv's
+continuation to the next slot (matching sched_one), so the worker only DELIVERS in its first slot; the
+acceptor's next accept then blocks for a client that won't connect until the previous one is served. Fix:
+[acceptor; worker; worker] per connection (accept+send, recv-deliver, handle) — the worker fully serves
+before the next accept. Different from the THEORY schedule [1;2]x4 (which works because the reference accept
+doesn't block) — same transcript by the run-to-completion property. tool + test both use [1;2;2]x6.
+**Manifest/TCB:** Concurrency effect gains `codegen` field + diff_sched_http in tests; gen_tcb_report.sh row
+updated. Gates all green: no-admitted, no-objmagic, stray-perform, generated-fresh, no-bind-in-generated,
+kb-lint, tcb. Full dune test exit 0 (incl. the new diff_sched_http over real TCP).
+
+## Exact next step (post native concurrent server)
+C5 is COMPLETE, end-to-end, deployable: reference semantics + CEK adequacy + scheduler + conc-free embedding
+law + concurrent-driver theory + OCaml Effect.Deep realizer + scheduler differential + codegen conc ops +
+native concurrent HTTP server binary + real-TCP differential. Only reserved item: the GENERAL (non-instance)
+re-derivation of drv_concurrent_matches through the multi-fiber channel plumbing (theory statement boundary,
+no new TCB). Backlog (unrelated to C5): redoq mode-K CI leg + bench at next pin bump; PCountByte (wc -l);
+mode-K over file/socket samples.

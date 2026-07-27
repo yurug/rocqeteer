@@ -739,6 +739,22 @@ Definition http_prog (fuel_conns fuel_read : nat) (ml : Z) : tm :=
 Definition sample_http : tm := http_prog 3 8 7.
 Definition sample_http_big : tm := http_prog 16 64 512.
 
+(** C5 (adr-0019): the CONCURRENT driver's two fibers, as EffIR programs so the
+    codegen emits them (theories/SchedHttp.v proves that under a run-to-completion
+    schedule they recover [http_prog]'s transcript).  The ACCEPTOR accepts a
+    connection and hands the whole accept result (a [Tag] at db0) to the worker over
+    channel 0; the WORKER receives it and runs the SAME per-connection handler the
+    sequential server uses.  [drv_acceptor]/[drv_worker] are the fuel-3 instances the
+    concurrent tool and its differential run (accept fuel = client count, the harness
+    contract). *)
+Definition acceptor (fc : nat) : tm :=
+  Repeat fc (Bind (Perform OAccept []) (Perform OChanSend [VInt 0; VVar 0])).
+Definition worker (fw fr : nat) (ml : Z) : tm :=
+  Repeat fw (Bind (Perform OChanRecv [VInt 0])
+               (Match (VVar 0) [(PTag 0, http_handle fr ml)] (Ret VUnit))).
+Definition drv_acceptor : tm := acceptor 3.
+Definition drv_worker : tm := worker 3 8 7.
+
 Definition all_programs : list (string * tm) :=
   [ ("prog0"%string, prog0);
     ("sample_delete"%string, sample_delete);
@@ -780,4 +796,6 @@ Definition all_programs : list (string * tm) :=
     ("sample_file_missing"%string, sample_file_missing);
     ("sample_http"%string, sample_http);
     ("sample_http_big"%string, sample_http_big);
+    ("drv_acceptor"%string, drv_acceptor);
+    ("drv_worker"%string, drv_worker);
     ("demo_prog"%string, demo_prog) ].

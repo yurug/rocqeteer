@@ -107,19 +107,13 @@ Qed.
 
 (* ===== §B  The concurrent driver: acceptor + worker over a channel ========= *)
 
-(** ACCEPTOR: accept a connection, hand it (the whole [DTag] accept result at db0) to
-    the worker over channel 0 — then loop.  [OChanSend] is the yield point. *)
-Definition acceptor (fc : nat) : tm :=
-  Repeat fc (Bind (Perform OAccept []) (Perform OChanSend [VInt 0; VVar 0])).
-
-(** WORKER: receive a connection off channel 0 and run the SAME per-connection handler
-    the sequential server uses (the accept-result [Match] arm) — then loop.  [OChanRecv]
-    is the yield point; an empty channel BLOCKS (the schedule must feed it first). *)
-Definition worker (fw fr : nat) (ml : Z) : tm :=
-  Repeat fw (Bind (Perform OChanRecv [VInt 0])
-               (Match (VVar 0) [(PTag 0, http_handle fr ml)] (Ret VUnit))).
-
-(** Two fibers sharing the shared world and one pre-made channel (id 0). *)
+(** The two fibers ([Samples.acceptor]/[Samples.worker], shared with the codegen so the
+    concurrent tool runs THESE terms): the ACCEPTOR accepts a connection and hands the
+    whole accept result (a [DTag] at db0) to the worker over channel 0 ([OChanSend] is
+    the yield point); the WORKER receives it and runs the SAME per-connection handler
+    the sequential server uses ([OChanRecv] is the yield point; an empty channel BLOCKS —
+    the schedule must feed it first).  Two fibers share the world and one pre-made
+    channel (id 0). *)
 Definition drv_init (tbl : list (list ascii * list ascii)) (sc : list (list ascii))
     (fc fw fr : nat) (ml : Z) : sst :=
   init_sst (sockw tbl sc)

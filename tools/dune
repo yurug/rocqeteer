@@ -2,5 +2,5 @@
 ; from Rocq (Samples.sample_wc_big, theorem FileIO.wc_prog_correct); this
 ; executable is the untrusted shell wrapper (argv/exit codes).
 (executables
- (names rwc rhttpd)
+ (names rwc rhttpd rhttpd_conc)
  (libraries rkv generated zarith unix))

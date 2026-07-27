@@ -173,6 +173,18 @@ C5.1 spike.** This is the C1 pattern (attempt the strong theorem, named fallback
   proven instances (`interleaving_121`/`producer_consumer`/`deadlock`/`spawn_runs`) plus adversarial
   schedules (starvation, immediate-block, ping-pong, short-deadlock). Extraction extended to `Sched`
   (`extraction/Extr.v`); manifest `[effect."Concurrency"]` + `Runtime_Sched_faithful` assumption + TCB-report
-  rows added. Reserved next: nesting the socket handler to run the concurrent HTTP driver (`SchedHttp.drv_*`)
-  natively end-to-end (the pure conc-op observable is what `diff_sched` validates; socket ops are already
-  covered by `diff_sock`).
+  rows added.
+- **The native concurrent HTTP server** (`tools/rhttpd_conc.ml` + `tests/diff_sched_http.ml`): the
+  differentiator made real. The codegen now lowers the 5 conc ops to `Rkv.Sched.*` (`codegen/emit.ml`;
+  channel/index args coerce `Rval.Int`→`Z.t` with the reference's shape check), so `Samples.drv_acceptor`/
+  `drv_worker` (the fibers, fuel 3) are emitted into `Generated.Prog0_generated`. The tool runs them under
+  `Rkv.Sched` nested inside the real socket/store/env/err realizers — a fiber's socket/store/throw effects
+  propagate OUT of the scheduler handler to the enclosing realizer (the `diff_sched` Trace pattern).
+  `diff_sched_http` forks real TCP clients and asserts the concurrent server's transcript equals the extracted
+  `observe_sock http_prog` reference (= `SockIO.http_prog_correct`, transferred by `drv_concurrent_matches`).
+  Schedule note: real BLOCKING accept forces `[acceptor; worker; worker]` per connection — the worker must
+  fully serve a connection before the next accept; a plain `[1;2]` alternation deadlocks because the scheduler
+  defers a recv's continuation to the next slot (matching `sched_one`). This composes the two
+  separately-validated realizers (`diff_sched` bookkeeping + `diff_sock` socket ops) into one end-to-end
+  proven-transcript claim. Reserved: the general (non-instance) re-derivation of `drv_concurrent_matches`
+  through the channel plumbing.
