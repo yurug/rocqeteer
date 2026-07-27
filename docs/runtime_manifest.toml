@@ -1,6 +1,10 @@
 # Runtime manifest (slice 1) — every realizer and refinement assumption that crosses
 # from the proven Rocq world into the trusted OCaml runtime. This is the audit surface
 # of the runtime TCB (kb/spec/runtime-manifest.md, kb/architecture/decisions/adr-0004-trust-model.md).
+#
+# Non-realizer note: runtime/fault.ml performs a DELIBERATELY-UNHANDLED effect
+# (Rkv.Fault.Unregistered) to exercise the T8 loud-abort boundary in tests. It realizes
+# no proven effect and crosses no proof boundary, so it has no entry below by design.
 
 [primitive."value_zero"]
 ocaml_symbol = "Z.zero"
@@ -420,6 +424,15 @@ purity       = "pure"
 raises       = []
 pre          = "true (total; shape mismatch -> None)"
 post         = "Bytes hay, Bytes needle -> Some (Int first-index) | None; empty needle -> Some 0; FIRST match wins (reference EffIR.find_sub — the C4 rider prim, adr-0018 §6)"
+tests        = ["diff_prims"]
+owner        = "yann"
+
+[primitive."prim_count_byte"]
+ocaml_symbol = "Prims.prim_count_byte"
+purity       = "pure"
+raises       = []
+pre          = "true (total; shape mismatch -> None)"
+post         = "Bytes bs, Int b -> Int (count of the byte b mod 256 in bs); Euclidean mod (Z.erem) matches the reference Z.modulo on the positive divisor 256. = apply_prim PCountByte / EffIR.count_byte — with the newline byte it is wc -l (the C3 rider prim, adr-0017)"
 tests        = ["diff_prims"]
 owner        = "yann"
 

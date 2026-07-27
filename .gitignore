@@ -27,6 +27,10 @@ _opam/
 .#*
 #*#
 
+# Agent/session tool state (not part of the repo)
+.backbrief/
+.DS_Store
+
 # NOTE: generated/ is committed on purpose (reviewable, hash-headed). Do not ignore it.
 
 # External convenience symlink to a separate repo (absolute path, non-portable)

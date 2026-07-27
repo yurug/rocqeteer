@@ -7,6 +7,30 @@
    packs the route table into the OAsk context, and maps outcomes to exit codes.
    Clients must follow the one-shot contract: send, half-close, read to EOF
    (e.g. tests/diff_sock.ml's clients). *)
+
+(* Bind a loopback listener, failing GRACEFULLY (message + exit code, no backtrace) on
+   the common first-time misuses: a non-numeric/out-of-range port, an address already in
+   use, or a privileged port without permission. *)
+let bind_listener (label : string) (port_s : string) : Unix.file_descr =
+  let port =
+    match int_of_string_opt port_s with
+    | Some p when p >= 0 && p <= 65535 -> p
+    | _ ->
+        Printf.eprintf "%s: invalid port %S (expected 0-65535)\n" label port_s;
+        exit 64
+  in
+  let listener = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Unix.setsockopt listener Unix.SO_REUSEADDR true;
+  (try
+     Unix.bind listener (Unix.ADDR_INET (Unix.inet_addr_loopback, port));
+     Unix.listen listener 16
+   with Unix.Unix_error (e, _, _) ->
+     (try Unix.close listener with _ -> ());
+     Printf.eprintf "%s: cannot listen on 127.0.0.1:%d — %s\n" label port
+       (Unix.error_message e);
+     exit 74);
+  listener
+
 let () =
   match Array.to_list Sys.argv with
   | _ :: port :: routes when List.length routes mod 2 = 0 ->
@@ -24,11 +48,7 @@ let () =
                   Rkv.Rval.Bytes (Bytes.of_string b)))
              (pair routes))
       in
-      let listener = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-      Unix.setsockopt listener Unix.SO_REUSEADDR true;
-      Unix.bind listener
-        (Unix.ADDR_INET (Unix.inet_addr_loopback, int_of_string port));
-      Unix.listen listener 16;
+      let listener = bind_listener "rhttpd" port in
       Printf.printf "rhttpd: serving 16 one-shot connections on 127.0.0.1:%s\n%!"
         port;
       let table = Rkv.Kv.T.create 8 in

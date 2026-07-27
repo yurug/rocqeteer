@@ -164,12 +164,16 @@ let live_outputs ?(sys = Rkv.Sockio.real_sys) ?(kernel = false) (fn : unit -> 'a
       in
       ignore (Unix.waitpid [] pid);
       Unix.close listener;
-      (match result with
-       | Ok (Ok _) -> Ok (read_recorded outfile)
-       | Ok (Error e) ->
-           Error (`Unexpected_exception
-                    ("program threw: " ^ Rkv.Rval.to_string e))
-       | Error e -> Error e)
+      let ret =
+        match result with
+        | Ok (Ok _) -> Ok (read_recorded outfile)
+        | Ok (Error e) ->
+            Error (`Unexpected_exception
+                     ("program threw: " ^ Rkv.Rval.to_string e))
+        | Error e -> Error e
+      in
+      (try Sys.remove outfile with _ -> ());
+      ret
 
 let check ?(kernel = false) name (term : E.tm) (fn : unit -> 'a)
     (script : string list) =

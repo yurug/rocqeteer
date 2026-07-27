@@ -36,19 +36,24 @@ Reference interpreter (pure, in Rocq/extracted)   rocq-eff-codegen (OCaml tool)
 No JSON/serialization layer sits in the trusted path: the EffIR datatype is extracted to OCaml and the
 codegen pattern-matches on it directly. See [[adr-0002-extraction-bridge]].
 
-## Module structure (repo layout, created lazily per phase — report §14 + kb/)
+## Module structure (repo layout — `docs/layout.md` is authoritative)
 ```
-theories/            Rocq sources
-  Effects/           EffIR, effect signatures, reference interpreter, laws, Hoare layer
-  RuntimeSpec/       Rocq specs for native realizers (bytes, int, error, …)
-  Examples/          KV (slice 1), Codec (pilot)
-  Extraction/        Extract-EffIR-to-OCaml-ADT directives
-codegen/             OCaml tool: eff_ir.ml (mirrors extracted ADT), typecheck_ir.ml, emit_ocaml.ml,
-                     emit_effects.ml, emit_handlers.ml, emit_mli.ml, emit_manifest.ml, main.ml
-runtime/             Trusted OCaml runtime modules (runtime_error, runtime_bytes, … ) + manifest
-generated/           Codegen output (.ml/.mli) — COMMITTED, hash-headed, never hand-edited
-tests/               unit/ differential/ fuzz/ corpus/
-bench/  ci/  docs/    benchmarks, TCB/forbidden-API checks, schemas + design notes
+theories/            Rocq sources, FLAT (no subdirs): EffIR (the IR + reference interpreter +
+                     apply_prim), Wf (the R10 well-formedness checker), Elab/ElabNs (the ADR-0016
+                     tower elaborations), Cek/Sched/SchedHttp (the C5 concurrency machine +
+                     scheduler + driver), FileIO/SockIO (C3/C4 apps), Samples (the source-of-truth
+                     program list the codegen consumes), KV/Prims/Fold/Journal/... (proofs)
+codegen/             OCaml codegen CLI: codegen.ml (driver), emit.ml/.mli (EffIR -> direct-style OCaml)
+extraction/          Extract-EffIR-and-reference directives (Extr.v) -> the ref_extracted library
+runtime/             Trusted OCaml realizers (kv, fileio, sockio, sched, time, err, env, trace,
+                     cache, journal, prims, codec, rval) -- the manifest audits exactly these
+generated/           Codegen output: prog0_generated.ml (mode F) + progk_generated.ml (mode K) --
+                     COMMITTED, hash-headed, never hand-edited
+tools/               rwc (wc) . rhttpd / rhttpd_conc (HTTP servers) -- untrusted shell wrappers
+tests/               differential suites (diff_*) + corpus/
+support/             coqconv (the extracted-dval <-> Rval bridge)
+ci/  docs/  examples/  the forbidden-API/TCB gates . the TCB report + runtime manifest . runnable .v examples
+```
 kb/                  this knowledge base
 ```
 

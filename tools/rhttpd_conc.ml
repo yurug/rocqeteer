@@ -35,6 +35,28 @@ let worker_fiber () = Gen.drv_worker (); Rkv.Rval.Unit
 let schedule : Z.t list =
   List.concat (List.init 6 (fun _ -> [ Z.one; Z.of_int 2; Z.of_int 2 ]))
 
+(* Bind a loopback listener, failing GRACEFULLY (message + exit code, no backtrace) on
+   a bad/out-of-range port, an address already in use, or a privileged port. *)
+let bind_listener (label : string) (port_s : string) : Unix.file_descr =
+  let port =
+    match int_of_string_opt port_s with
+    | Some p when p >= 0 && p <= 65535 -> p
+    | _ ->
+        Printf.eprintf "%s: invalid port %S (expected 0-65535)\n" label port_s;
+        exit 64
+  in
+  let listener = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  Unix.setsockopt listener Unix.SO_REUSEADDR true;
+  (try
+     Unix.bind listener (Unix.ADDR_INET (Unix.inet_addr_loopback, port));
+     Unix.listen listener 16
+   with Unix.Unix_error (e, _, _) ->
+     (try Unix.close listener with _ -> ());
+     Printf.eprintf "%s: cannot listen on 127.0.0.1:%d — %s\n" label port
+       (Unix.error_message e);
+     exit 74);
+  listener
+
 let () =
   match Array.to_list Sys.argv with
   | _ :: port :: routes when List.length routes mod 2 = 0 ->
@@ -52,11 +74,7 @@ let () =
                   Rkv.Rval.Bytes (Bytes.of_string b)))
              (pair routes))
       in
-      let listener = Unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
-      Unix.setsockopt listener Unix.SO_REUSEADDR true;
-      Unix.bind listener
-        (Unix.ADDR_INET (Unix.inet_addr_loopback, int_of_string port));
-      Unix.listen listener 16;
+      let listener = bind_listener "rhttpd_conc" port in
       Printf.printf
         "rhttpd_conc: serving 3 one-shot connections (acceptor+worker fibers) on \
          127.0.0.1:%s\n%!"

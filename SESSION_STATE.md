@@ -1,6 +1,6 @@
 # Session state — Rocqeteer
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-27_
 
 ## What this project is
 A domain-independent trusted toolchain to use Rocq as a certified programming language: write effectful

@@ -137,16 +137,20 @@ let live_outputs (script : string list) : (string list, string) result =
       in
       ignore (Unix.waitpid [] pid);
       Unix.close listener;
-      (match result with
-       | Ok (Ok sched_res) -> (
-           match sched_res with
-           | Rkv.Sched.Completed _ -> Ok (read_recorded outfile)
-           | Rkv.Sched.Stuck (live, _) ->
-               Error
-                 (Printf.sprintf "scheduler stuck: fibers %s live"
-                    (String.concat "," (List.map Z.to_string live))))
-       | Ok (Error e) -> Error ("a fiber threw: " ^ Rkv.Rval.to_string e)
-       | Error e -> Error (Rkv.Sockio.string_of_error e))
+      let ret =
+        match result with
+        | Ok (Ok sched_res) -> (
+            match sched_res with
+            | Rkv.Sched.Completed _ -> Ok (read_recorded outfile)
+            | Rkv.Sched.Stuck (live, _) ->
+                Error
+                  (Printf.sprintf "scheduler stuck: fibers %s live"
+                     (String.concat "," (List.map Z.to_string live))))
+        | Ok (Error e) -> Error ("a fiber threw: " ^ Rkv.Rval.to_string e)
+        | Error e -> Error (Rkv.Sockio.string_of_error e)
+      in
+      (try Sys.remove outfile with _ -> ());
+      ret
 
 let check name (script : string list) =
   let r = ref_outputs script in
