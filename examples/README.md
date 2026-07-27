@@ -17,7 +17,8 @@ where the *general* laws (∀-quantified, with frame clauses, mutants, and inhab
 | **Journal** | `OJournal` | timestamped durability log; journaling never changes results (the frame law); replay | [`Journaling.v`](Journaling.v) | [`theories/Journal.v`](../theories/Journal.v) |
 | **Files** | [`Files.v`](Files.v) | write-read roundtrip; exact counts at EOF chunk boundaries; modeled errors as values (`wc_prog_correct` / `chunking_invariance` in [`theories/FileIO.v`](../theories/FileIO.v)) |
 | **Sockets** | [`Sockets.v`](Sockets.v) | scripted connections; the proven HTTP/1.0 server at its boundary corners (`http_prog_correct` in [`theories/SockIO.v`](../theories/SockIO.v)) |
-| **Combinators** (not effects) | `Match` `Repeat` `Fold` + 16 checked prims | tagged-union dispatch, bounded loops, argv-style folds, soft-failing arithmetic/parsing | [`Combinators.v`](Combinators.v) | [`theories/Recur.v`](../theories/Recur.v), [`theories/Fold.v`](../theories/Fold.v), [`theories/Prims.v`](../theories/Prims.v) |
+| **Concurrency** | [`Concurrency.v`](Concurrency.v) | schedule-controlled interleaving, channel hand-off, deadlock-as-a-value; the concurrent HTTP server serves the *sequential* transcript (`drv_concurrent_matches`; the CEK machine in [`theories/Cek.v`](../theories/Cek.v), scheduler in [`theories/Sched.v`](../theories/Sched.v)) |
+| **Combinators** (not effects) | `Match` `Repeat` `Fold` + 18 checked prims | tagged-union dispatch, bounded loops, argv-style folds, soft-failing arithmetic/parsing (incl. `PFindSub`, `PCountByte` = wc -l) | [`Combinators.v`](Combinators.v) | [`theories/Recur.v`](../theories/Recur.v), [`theories/Fold.v`](../theories/Fold.v), [`theories/Prims.v`](../theories/Prims.v) |
 
 Beyond instances: the **program logic** (`theories/Logic.v`, a shallow weakest-precondition layer over
 the same `run` — zero added trust) is what turns these into ∀-quantified specifications;

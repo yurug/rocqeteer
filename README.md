@@ -98,16 +98,21 @@ fails the build if the manifest names a discharge theorem that does not exist.
 
 ## Status
 
-Experimental, and honest about its edges. IR v2 is complete: ten effect families over one
+Experimental, and honest about its edges. IR v2 is complete: eleven effect families over one
 explicit world, general `Match`, `Fold`, bounded `Repeat`, checked primitives that return an
 option rather than garbage, a well-formedness checker, and a weakest-precondition program
 logic. Proof counts and assumption counts are not repeated here on purpose, since
 `make tcb-report` regenerates them from the build and the README would only rot.
 
-A concurrency layer exists in Rocq (a CEK step machine with an adequacy theorem, a
-cooperative scheduler whose determinism comes from an injected schedule, and the HTTP server
-recovered under a concurrent acceptor and worker structure), but it stops at the Rocq
-boundary: no runtime realizer, no code generation path, no differential test yet.
+Concurrency is delivered end to end (ADR-0019): a CEK step machine with a machine-checked
+adequacy theorem, a cooperative scheduler whose determinism comes from an injected schedule, and
+the HTTP server recovered under a concurrent acceptor/worker structure — and, past the Rocq
+boundary, an OCaml 5 `Effect.Deep` scheduler realizer, a code-generation path for the five
+operations, a native concurrent server (`tools/rhttpd_conc`), and differential tests against the
+extracted reference over real TCP. What remains genuinely provisional: non-functional properties
+are *measured*, not proven (v1 scope), and the OCaml runtime realizers are trusted and
+adversarially tested rather than verified — every such trust expansion is named in the
+[TCB report](docs/tcb_report.md) and [runtime manifest](docs/runtime_manifest.toml).
 
 Where this fits the wider picture: rocqeteer is how the harness gets its strongest check,
 formal verification of the critical modules, in the loop described in
