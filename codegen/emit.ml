@@ -260,6 +260,8 @@ and emit_prim (env : string list) (p : prim) (args : coq_val list) : string =
                                   (emit_val env a) (emit_val env b)
   | PFindSub,     [a; b]    -> Printf.sprintf "(Prims.prim_find_sub %s %s)"
                                  (emit_val env a) (emit_val env b)
+  | PCountByte,   [a; b]    -> Printf.sprintf "(Prims.prim_count_byte %s %s)"
+                                 (emit_val env a) (emit_val env b)
   | _ -> raise (Codegen_error "Prim applied at wrong arity")
 
 and emit_tm (env : string list) (t : tm) : string =

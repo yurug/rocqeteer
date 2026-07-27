@@ -303,3 +303,16 @@ let prim_find_sub (hay : Rval.t) (needle : Rval.t) : Rval.t =
       in
       scan 0
   | _ -> Rval.None
+
+(** [prim_count_byte bs b]: number of bytes in [bs] equal to the byte [b mod 256]
+    (Euclidean, matching the reference [b mod 256] on Z which is non-negative for a
+    positive modulus). Mirrors [EffIR.apply_prim PCountByte] / [count_byte] — with the
+    newline byte it is [wc -l] (C3 rider prim, adr-0017). Shape mismatch -> Rval.None. *)
+let prim_count_byte (bs : Rval.t) (b : Rval.t) : Rval.t =
+  match bs, b with
+  | Rval.Bytes bytes, Rval.Int z ->
+      let target = Char.chr (Z.to_int (Z.erem z (Z.of_int 256))) in
+      let n = ref 0 in
+      Bytes.iter (fun c -> if c = target then incr n) bytes;
+      Rval.Int (Z.of_int !n)
+  | _ -> Rval.None

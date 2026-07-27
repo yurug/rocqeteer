@@ -182,7 +182,8 @@ Inductive prim : Type :=
 | PLowerBytes   (** DBytes bs -> DBytes (ASCII fold: 65-90 shifted +32; every other byte unchanged) (R12) *)
 | PUpperBytes   (** DBytes bs -> DBytes (ASCII fold: 97-122 shifted -32; every other byte unchanged) (R12) *)
 | PListSnoc     (** DList vs, v -> DList (vs ++ [v]) — v is ANY dval; non-DList first arg -> DNone (R13) *)
-| PFindSub.     (** DBytes hay, DBytes needle -> DSome (DInt first-index) | DNone (absent); empty needle -> DSome 0 (C4 rider, adr-0018) *)
+| PFindSub      (** DBytes hay, DBytes needle -> DSome (DInt first-index) | DNone (absent); empty needle -> DSome 0 (C4 rider, adr-0018) *)
+| PCountByte.   (** DBytes bs, DInt b -> DInt (count of byte b mod 256 in bs); wc -l with b = 10 (C3 rider, adr-0017) *)
 
 (** Int64 bounds: [−2⁶³, 2⁶³−1] as explicit Z constants. *)
 Definition int64_min : Z := -9223372036854775808.
@@ -403,6 +404,20 @@ Fixpoint find_sub (n h : list ascii) : option nat :=
        | _ :: h' => option_map S (find_sub n h')
        end.
 
+(** [count_byte target bs]: how many bytes of [bs] equal [target].  The reference for
+    [PCountByte] — with the newline byte it is [wc -l] (the C3 rider prim; adr-0017). *)
+Fixpoint count_byte (target : ascii) (bs : list ascii) : nat :=
+  match bs with
+  | []      => O
+  | c :: r  => (if ascii_eqb c target then 1 else 0) + count_byte target r
+  end.
+
+(** [apply_count_byte bs b]: count occurrences of the byte [b mod 256] in [bs].  Total:
+    the target [Z] is read as a byte via [ascii_of_N] (out-of-[0,255] wraps, as any byte
+    literal does). *)
+Definition apply_count_byte (bs : list ascii) (b : Z) : dval :=
+  DInt (Z.of_nat (count_byte (ascii_of_N (Z.to_N (b mod 256))) bs)).
+
 Definition apply_prim (p : prim) (args : list dval) : dval :=
   match p, args with
   | PAddChecked,  [DInt a; DInt b]     => apply_add_checked a b
@@ -426,6 +441,7 @@ Definition apply_prim (p : prim) (args : list dval) : dval :=
       | Some i => DSome (DInt (Z.of_nat i))
       | None   => DNone
       end
+  | PCountByte,   [DBytes bs; DInt b]  => apply_count_byte bs b
   | _, _                               => DNone   (* arity/shape mismatch *)
   end.
 

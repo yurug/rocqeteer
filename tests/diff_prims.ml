@@ -342,7 +342,18 @@ let direct_prim_pass () =
     check_prim "list_snoc" E.PListSnoc (app2 Rkv.Prims.prim_list_snoc) [lv; sv];
     (* C4 rider prim (adr-0018): find_sub over random hay/needle byte pairs *)
     check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub)
-      [Rkv.Rval.Bytes (gen_bytes ()); Rkv.Rval.Bytes (gen_bytes ())]
+      [Rkv.Rval.Bytes (gen_bytes ()); Rkv.Rval.Bytes (gen_bytes ())];
+    (* C3 rider prim (adr-0017): count_byte over random bytes, target biased to the
+       newline byte (wc -l) and to edge/out-of-range values (mod-256 wrap) *)
+    let target =
+      match Random.State.int rng 5 with
+      | 0 -> Z.of_int 10                             (* newline: wc -l *)
+      | 1 -> Z.of_int (-1)                           (* negative -> wraps to 255 *)
+      | 2 -> Z.of_int 266                            (* > 255 -> wraps to 10 *)
+      | _ -> Z.of_int (Random.State.int rng 256)
+    in
+    check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+      [Rkv.Rval.Bytes (gen_bytes ()); Rkv.Rval.Int target]
   done;
   (* Fixed adversarial cases *)
   let huge = Rkv.Rval.Int (Z.of_string "1180591620717411303424") (* 2^70: must be DNone, not Z.Overflow *) in
@@ -541,7 +552,20 @@ let direct_prim_pass () =
   (* the request-line shape the C4 server parses *)
   assert_find "GET /p HTTP/1.0\r\nHost: x\r\n\r\n" "\r\n" (found 15) "first CRLF";
   check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub) [zi 0; bsv "x"];
-  check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub) [bsv "x"; Rkv.Rval.Unit]
+  check_prim "find_sub" E.PFindSub (app2 Rkv.Prims.prim_find_sub) [bsv "x"; Rkv.Rval.Unit];
+  (* C3 rider prim (adr-0017): count_byte fixed cases — wc -l, wrap, mismatch *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [bsv "a\nbb\n\n"; zi 10];                       (* 3 newlines *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [bsv "no newlines here"; zi 10];                (* 0 *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [bsv "\n\n"; zi 266];                           (* 266 mod 256 = 10 -> 2 *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [bsv "\x00a\x00"; zi 0];                        (* NUL byte -> 2 *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [zi 5; zi 10];                                  (* shape mismatch -> None *)
+  check_prim "count_byte" E.PCountByte (app2 Rkv.Prims.prim_count_byte)
+    [bsv "x"; Rkv.Rval.Unit]                        (* target not Int -> None *)
 
 (* --- R12 pipeline pass: sample_ci_dispatch ---------------------------------- *)
 (* Case-insensitive dispatch through the FULL reference-vs-generated pipeline: the
@@ -703,7 +727,7 @@ let () =
     !cover_g11 !cover_g12 !cover_g13 !cover_g14 !cover_g15 !cover_g16
     !cover_c1 !cover_c2 !cover_c3 !cover_c4 !cover_c5;
   if !fails = 0 && !prim_fails = 0 && !ci_fails = 0 && cov_ok && ci_cov_ok then
-    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 17 realizers direct, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5 + list snoc order pinned); coverage asserted"
+    print_endline "PRIMS DIFFERENTIAL OK: reference == fast (pipeline G1-G16 + all 18 realizers direct incl. count_byte/wc-l, case folds exhaustive over all 256 single bytes + ci-dispatch C1-C5 + list snoc order pinned); coverage asserted"
   else begin
     if not cov_ok then
       print_endline "PRIMS COVERAGE GAP: a required grammar class (G1-G16) was never exercised";

@@ -92,6 +92,7 @@ Definition prim_arity (p : prim) : nat :=
   | PUpperBytes  => 1
   | PListSnoc    => 2
   | PFindSub     => 2
+  | PCountByte   => 2
   end%nat.
 
 (** Binder count of each depth-1 pattern — exactly the length of the payload list

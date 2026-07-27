@@ -658,6 +658,60 @@ Theorem mutant_lower_differs :
   <> apply_lower_bytes (list_ascii_of_string "EX10").
 Proof. vm_compute. intro H. inversion H. Qed.
 
+(* ---- §6d  PCountByte (wc -l): count a byte in a byte string ---------------- *)
+(** The C3 rider prim (adr-0017): with the newline byte, [PCountByte] is [wc -l]. *)
+Definition nl : ascii := ascii_of_N 10.
+
+(** GENERAL: counting distributes over concatenation — the property [wc -l] relies on
+    (chunked reads count the same as the whole; the adr-0017 chunking discipline at the
+    byte-count level). *)
+Lemma count_byte_app : forall t a b,
+  count_byte t (a ++ b) = (count_byte t a + count_byte t b)%nat.
+Proof.
+  intros t a b; induction a as [| c a' IH]; simpl; [reflexivity |].
+  rewrite IH; apply Nat.add_assoc.
+Qed.
+
+(** Three lines: two bodies and a trailing empty line -> three newlines. *)
+Theorem count_newlines_three :
+  apply_prim PCountByte
+    [DBytes (list_ascii_of_string "a" ++ [nl] ++ list_ascii_of_string "bb" ++ [nl] ++ [nl]);
+     DInt 10]
+  = DInt 3.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Empty input -> zero (wc -l of an empty file). *)
+Theorem count_byte_empty :
+  apply_prim PCountByte [DBytes []; DInt 10] = DInt 0.
+Proof. reflexivity. Qed.
+
+(** The high-bit target wraps mod 256 (a byte literal): counting 266 = counting 10. *)
+Theorem count_byte_wraps :
+  apply_prim PCountByte [DBytes [nl; nl]; DInt 266] = DInt 2.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Shape / arity mismatch -> DNone (the adr-0009 total posture). *)
+Theorem count_byte_shape_mismatch :
+  apply_prim PCountByte [DInt 5; DInt 10] = DNone.
+Proof. reflexivity. Qed.
+
+Theorem count_byte_arity_mismatch :
+  apply_prim PCountByte [DBytes [nl]] = DNone.
+Proof. reflexivity. Qed.
+
+(** MUTANT / anti-vacuity: the TARGET byte is load-bearing — an implementation that
+    counted a fixed byte (or ignored the target) would fail here (counting spaces vs
+    newlines in the same input differs observably). *)
+Theorem count_byte_target_matters :
+  apply_prim PCountByte [DBytes (list_ascii_of_string "a  b" ++ [nl]); DInt 32]  (* 2 spaces *)
+  <> apply_prim PCountByte [DBytes (list_ascii_of_string "a  b" ++ [nl]); DInt 10]. (* 1 newline *)
+Proof. vm_compute. intro H; inversion H. Qed.
+
+(** Inhabitance: a witness world where a real line-count runs through [apply_prim]. *)
+Lemma count_byte_inhabited :
+  exists n, apply_prim PCountByte [DBytes [nl; nl; nl]; DInt 10] = DInt n /\ n = 3.
+Proof. exists 3. vm_compute. split; reflexivity. Qed.
+
 (** Print Assumptions footprint — each must say "Closed under the global context". *)
 Print Assumptions parse_print_zero.
 Print Assumptions parse_print_roundtrip.
@@ -704,3 +758,8 @@ Print Assumptions ci_dispatch_inhabited.
 Print Assumptions mutant_shifts_digits.
 Print Assumptions lower_keeps_digits.
 Print Assumptions mutant_lower_differs.
+Print Assumptions count_byte_app.
+Print Assumptions count_newlines_three.
+Print Assumptions count_byte_wraps.
+Print Assumptions count_byte_target_matters.
+Print Assumptions count_byte_inhabited.
