@@ -32,7 +32,7 @@ trips.
 | `ci/check_no_admitted.sh` | No `Admitted`, `admit`, `Axiom`, `Parameter`, `Hypothesis`, `Conjecture`, or `Variable` in `theories/` |
 | `ci/check_generated_fresh.sh` | The committed generated file equals a fresh codegen run, so hand-edits cannot survive |
 | `ci/check_discharge.sh` | Every manifest effect names `kernel-v1` or `derived(<theorem>)`, and that theorem exists |
-| `ci/check_tcb.sh` | Regenerate the report, assert the invariants, fail on silent TCB drift |
+| `ci/check_tcb.sh` | Regenerate the report, assert the invariants, fail on silent TCB drift (the toolchain block is informational and excluded from the comparison, so a different Rocq or OCaml point release is not a failure) |
 | `ci/check_kb_lint.sh` | Knowledge base lint |
 
 Note that `check_no_admitted.sh` is scoped to `theories/`. The gallery under `examples/`

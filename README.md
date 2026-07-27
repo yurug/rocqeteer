@@ -34,8 +34,9 @@ Rocq EffIR term ──extract──▶ reference interpreter ─┐
 
 ## Quick start
 
-You need one opam switch with Rocq 9.1.1, OCaml 5.4.1, dune 3.23.0, qcheck, and zarith.
-Those are the versions the pipeline is verified against.
+You need one opam switch with Rocq 9.1, OCaml 5.3 or later, dune 3.23, qcheck and
+zarith. The exact versions of the last reference run are recorded in
+[`docs/tcb_report.md`](docs/tcb_report.md), which the build regenerates.
 
 ```bash
 make demo         # the whole thesis in five minutes, narrated
