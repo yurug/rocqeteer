@@ -18,29 +18,41 @@ v1 non-goal ([[prd]], [[adr-0004-trust-model]]). Do not write "proven"/"certifie
 *Measure:* CI-grep on `generated/` (shared with P3) + a benchmark smoke test asserting no interpreter
 allocation signature. *Gate:* presence of an interpreter in a hot path fails the build.
 
+*Enforced-by:* mechanical:ci/check_no_bind_in_generated.sh
+
 ### NF2 — Allocation budget per hot entrypoint
 *Criterion:* minor/major allocations within a per-entrypoint budget (closures from binds, tuples from state
 threading, option boxing should be near-eliminated by direct-style codegen). *Measure:* allocation profile
 (`Gc`/statmemprof or a counting harness). *Gate:* >budget on a stable benchmark is a warning; tracked.
+
+*Enforced-by:* none: no allocation budget is measured anywhere -- no bench harness and no CI check counts allocations per hot entrypoint
 
 ### NF3 — Determinism
 *Criterion:* generated programs and tests give identical results across runs/machines — no reliance on hash
 randomization, map iteration order, clock, locale, or platform `int` width (report §12.4). *Measure:* repeat
 runs + (where relevant) two-platform check. *Gate:* a determinism diff fails CI.
 
+*Enforced-by:* mechanical:ci/check_generated_fresh.sh
+
 ### NF4 — Latency regression
 *Criterion:* fast-path latency within an agreed factor of a baseline. *Measure:* `bench/` smoke on every PR,
 longer runs nightly. *Gate:* **>10% regression on a stable benchmark fails the PR** (report §13.5).
 
+*Enforced-by:* none: no latency benchmark exists, so a regression would be noticed by nobody
+
 ### NF5 — Build reproducibility
 *Criterion:* codegen output is byte-identical for identical inputs (shared with P4); generated-file hashes
 match their headers. *Measure:* re-run-equality + hash check in CI. *Gate:* mismatch fails the build.
+
+*Enforced-by:* mechanical:ci/check_generated_fresh.sh
 
 ### NF6 — TCB size budget (engineering control, not a guarantee)
 *Criterion:* codegen core ≤3000 LOC; runtime core ≤2000 LOC; each primitive module ≤500 LOC unless
 separately reviewed; `Obj.magic` uses 0 by default (≤1 reviewed witness module); unregistered `Extract
 Constant` = 0; C stubs = 0 in MVP. *Measure:* `docs/tcb_report.md` line counts + grep. *Gate:* over-budget
 requires an explicit review label.
+
+*Enforced-by:* mechanical:ci/check_tcb.sh
 
 ## Agent notes
 > "Measured" means a number in CI and a gate — not a theorem. If someone asks for a *proof* of a bound,

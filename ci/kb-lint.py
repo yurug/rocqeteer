@@ -30,6 +30,16 @@ Checks (E = error, W = warning):
                     `lint-max-lines: N` in frontmatter, which documents the
                     exception where reviewers will see it)
     E-index         directory holding 2+ md files has no INDEX.md
+    E-unenforced    a property under properties/ (P<n>/NF<n>/T<n>, written as a
+                    heading, a bullet, or a table row) that declares no
+                    `Enforced-by:` channel — for a table, that means the table
+                    has no `Enforced-by` column
+    E-channel       `Enforced-by:` names a channel outside the closed set, or
+                    names a file that does not exist. The set, strongest first:
+                    structural | proof | test | mechanical | hook | none
+    W-trust         a `proof:` channel whose property never says what the proof
+                    leaves out (statement, boundary, kernel)
+    E-noreason      `Enforced-by: none:` with no real reason after the colon
     W-stale         last git commit of the file is newer than `last-updated`
     W-dirty         file has uncommitted changes but `last-updated` is not today
     W-orphan        no other file links to this one (unreachable from the graph)
@@ -39,6 +49,8 @@ Checks (E = error, W = warning):
                     belongs in an ADR that the procedure links
     W-redefine      a glossary term re-defined outside the glossary file
                     (define once; content files link the glossary instead)
+    W-unenforced    a `constraint` file outside properties/ that shouts a
+                    binding rule (MUST/NEVER) and names no channel
 
 Exempt from all checks (but still valid link targets): reports/ (generated
 artifacts) and questions-round*.md (working files edited by the user).
@@ -66,6 +78,51 @@ RATIONALE_HEADER_RE = re.compile(
 # Matches the glossary's own definition shape: `- **Term**: ...`. Terms holding
 # placeholder characters ([, <, *) are template scaffolding, not definitions.
 TERM_DEF_RE = re.compile(r"^\s*-\s+\*\*([^*\[\]<>]+)\*\*\s*:", re.MULTILINE)
+
+# -- Enforcement channels. A property says what must hold; `Enforced-by:` names
+# the machinery that holds it. `instruction` is deliberately NOT a channel:
+# prose in a CLAUDE.md raises a probability, and admitting it here would let
+# every property pass by pointing at a paragraph — which is the exact defect
+# this check exists to catch. When prose really is all there is, the honest
+# declaration is `none: <reason>`, and the reason is what a later audit reads.
+# Real KBs write a claim in one of three shapes — a heading, a bullet, or a
+# table row — and a checker that reads only headings reports "clean" on the
+# other two, which is worse than not checking at all.
+CLAIM_ID = r"(?:P|NF|T)-?\d+"
+CLAIM_HEADING_RE = re.compile(rf"^#{{2,6}}\s+\**({CLAIM_ID})\b")
+CLAIM_BULLET_RE = re.compile(rf"^(\s*)[-*]\s+\**({CLAIM_ID})\**\s*[:.—–-]?\s")
+BULLET_RE = re.compile(r"^(\s*)[-*]\s")
+TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+ENFORCED_COL_RE = re.compile(r"enforced.?by", re.IGNORECASE)
+HEADING_RE = re.compile(r"^(#{1,6})\s+\S")
+# Searched, not anchored: the line may be a nested bullet, a bold run, or the
+# tail of the claim's own sentence. The lookbehind keeps prose that *names* the
+# field in backticks (as this kit's own templates do) from parsing as one.
+ENFORCED_RE = re.compile(r"(?<!`)\bEnforced-by\**\s*:\s*(.+)$", re.IGNORECASE)
+EMPTY_CELL = ("", "-", "--", "—", "–", "n/a")
+# Ordered strongest-first, and the order is the recommendation: a wrong answer
+# that cannot be represented beats one that is merely caught, and a proof says
+# "for every input" where a test says "not for these". `structural:` names the
+# type, capability, or construction that makes the violation unrepresentable;
+# `proof:` names a machine-checked obligation, and the property is expected to
+# name what the proof does NOT cover (statement, boundary, kernel) -- an
+# unnamed trust boundary is what separates a guarantee from a slogan.
+CHANNELS = ("structural", "proof", "test", "mechanical", "hook", "none")
+# Same threshold as skills/primitives/visual-check.py's no-visual reason, on purpose: the
+# two gates make the same demand ("a reason has to be a reason") and must not
+# drift into disagreeing about what counts as one.
+MIN_REASON = 20
+# Uppercase only. Lowercase "must" is ordinary prose; the shouted form is how
+# this methodology writes a binding rule, so it is the form worth holding to a
+# channel.
+BINDING_RE = re.compile(r"\b(?:MUST NOT|MUST|NEVER|SHALL)\b")
+# What a proof does not cover has to be written next to what it does. A proof is
+# universal over the property AS STATED, under the assumptions its kernel and
+# extraction carry; a property that names none of that reads as a guarantee over
+# the whole system, which is the one thing it is not.
+TRUST_RE = re.compile(
+    r"^\s*[-*>]?\s*\**(?:trusted|trust boundary|not covered|does not cover|"
+    r"assumes|assumptions)\**\s*:", re.IGNORECASE)
 
 
 def is_exempt(relpath):
@@ -145,6 +202,196 @@ def git_dates(kb_dir, relpath):
         return commit, bool(st.stdout.strip())
     except Exception:
         return None, None
+
+
+def declared_channels(region):
+    """Every `Enforced-by:` value stated anywhere in a claim's region.
+
+    A wrapped value is one value: a `none:` reason that runs onto the next line
+    is still a reason, and truncating at the line break would fail exactly the
+    authors who wrote a long enough one.
+    """
+    values, i = [], 0
+    while i < len(region):
+        m = ENFORCED_RE.search(region[i])
+        if not m:
+            i += 1
+            continue
+        parts, i = [m.group(1).strip()], i + 1
+        while i < len(region):
+            nxt = region[i]
+            # A following field label ends the value. Without this, the
+            # `Trusted:` line a proof channel is REQUIRED to carry gets joined
+            # onto the channel and turns a correct declaration into E-channel.
+            if not nxt.strip() or HEADING_RE.match(nxt) or TABLE_ROW_RE.match(nxt) \
+                    or BULLET_RE.match(nxt) or ENFORCED_RE.search(nxt) \
+                    or TRUST_RE.match(nxt):
+                break
+            parts.append(nxt.strip())
+            i += 1
+        # `*Enforced-by:* test:...` and `**Enforced-by:**  test:...` are how this
+        # gets written in files that mark their field labels, so the emphasis
+        # that lands on the value side is stripped rather than parsed as a channel.
+        values.append(" ".join(parts).rstrip("|").strip().lstrip("*_` ").strip())
+    return values
+
+
+def heading_claims(lines):
+    """Claims written as headings. A claim owns everything down to the next
+    heading at its level or above, so a nested `#### Violation example` block
+    still belongs to it and a channel placed anywhere under it counts."""
+    heads = []                      # (line index, level, claim id or None)
+    for i, line in enumerate(lines):
+        m = HEADING_RE.match(line)
+        if m:
+            claim = CLAIM_HEADING_RE.match(line)
+            heads.append((i, len(m.group(1)), claim.group(1) if claim else None))
+    for pos, (i, level, claim) in enumerate(heads):
+        if claim:
+            end = next((j for j, lvl, _ in heads[pos + 1:] if lvl <= level),
+                       len(lines))
+            region = lines[i + 1:end]
+            yield claim, i + 1, declared_channels(region), None, region
+
+
+def bullet_claims(lines):
+    """Claims written as list items (`- **T1** ...`). The region runs to the
+    next bullet at the same indent or shallower, so nested detail lines count."""
+    i = 0
+    while i < len(lines):
+        m = CLAIM_BULLET_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        indent, end = len(m.group(1)), i + 1
+        while end < len(lines):
+            nxt = BULLET_RE.match(lines[end])
+            if HEADING_RE.match(lines[end]) or (nxt and len(nxt.group(1)) <= indent):
+                break
+            end += 1
+        region = lines[i:end]
+        yield m.group(2), i + 1, declared_channels(region), None, region
+        i = end
+
+
+def table_claims(lines):
+    """Claims written as table rows, where the channel is a column. A table of
+    claims with no `Enforced-by` column declares nothing for any of its rows."""
+    def cells(line):
+        return [c.strip() for c in line.strip().strip("|").split("|")]
+
+    i = 0
+    while i < len(lines):
+        if not TABLE_ROW_RE.match(lines[i]):
+            i += 1
+            continue
+        start = i
+        while i < len(lines) and TABLE_ROW_RE.match(lines[i]):
+            i += 1
+        block = lines[start:i]
+        if len(block) < 3:          # header, separator, at least one row
+            continue
+        header = cells(block[0])
+        col = next((k for k, h in enumerate(header) if ENFORCED_COL_RE.search(h)),
+                   None)
+        for off, row in enumerate(block[2:], start=2):
+            row_cells = cells(row)
+            claim = row_cells[0].strip("*` ") if row_cells else ""
+            if not re.fullmatch(CLAIM_ID, claim):
+                continue
+            value = row_cells[col].strip() if col is not None \
+                and col < len(row_cells) else ""
+            values = [] if value.lower() in EMPTY_CELL else [value]
+            hint = None if col is not None else \
+                " — this table has no `Enforced-by` column; add one"
+            yield claim, start + off + 1, values, hint, [row]
+
+
+def find_claims(body):
+    """Yield (claim_id, line_no, channels, hint, region) for every claim.
+
+    One shape per file, in priority order: if it states claims as headings, a
+    claim-shaped bullet in a "Related" list is not a second claim. Falling back
+    only when the richer shape is absent keeps a file's summary table from
+    being read as a duplicate set of claims with different rules.
+    """
+    lines = body.splitlines()
+    for shape in (heading_claims, bullet_claims, table_claims):
+        found = list(shape(lines))
+        if found:
+            return found
+    return []
+
+
+def check_channel(value, kb):
+    """Return (code, message) for a bad `Enforced-by:` value, else None."""
+    channel, _, detail = value.partition(":")
+    channel, detail = channel.strip().lower(), detail.strip()
+    if channel not in CHANNELS:
+        hint = ""
+        if channel == "instruction":
+            hint = (" — prose only raises a probability; if that is genuinely all "
+                    "there is, say `none: <reason>` and let the audit read the reason")
+        return ("E-channel",
+                f"`{channel or value}` is not a channel {list(CHANNELS)}{hint}")
+    if channel == "none":
+        if len(detail) < MIN_REASON:
+            return ("E-noreason",
+                    f"`none:` needs an actual reason (>= {MIN_REASON} chars), "
+                    f"got `{detail}`")
+        return None
+    if not detail:
+        return ("E-channel",
+                f"`{channel}:` names nothing — give the file that does the enforcing")
+    # `tests/sync.test.ts::P4` and `tools/kb-lint.py#E-channel` both point at a
+    # file plus a location inside it; only the file part is checkable here.
+    path = re.split(r"::|#", detail, maxsplit=1)[0].strip()
+    if any(c in path for c in "*<>"):
+        return None                 # a template placeholder, not a claim about a file
+    cands = [os.path.join(kb, "..", path), os.path.join(kb, path)]
+    if not any(os.path.exists(os.path.normpath(c)) for c in cands):
+        return ("E-channel", f"`{path}` does not exist — a channel that names a "
+                             "missing file enforces nothing")
+    return None
+
+
+def check_enforcement(rel, body, fm, kb, errors, warnings):
+    """Every property names the machinery that enforces it.
+
+    Hard inside properties/ — that is where the invariants live, and a property
+    nothing checks is a wish. Elsewhere it is a warning on `constraint` files
+    that shout a binding rule and name nothing, which `--strict` turns into a
+    release-gating error.
+    """
+    # By declared type OR by name: an INDEX.md is a routing table in this
+    # methodology, and a pre-2026 KB that predates the `type:` key would
+    # otherwise have every ID its index lists read as an unenforced claim.
+    if fm.get("type") == "index" or os.path.basename(rel) == "INDEX.md":
+        return                      # routing tables list claims, they do not make them
+    # Any directory named properties/, not just the KB root's: a large KB
+    # nests sub-KBs (tezqed carries webapp/properties/), and a rule that only
+    # looked at the top level let every nested claim through unchecked.
+    if "properties" in rel.split(os.sep)[:-1]:
+        for claim, line, values, hint, region in find_claims(body):
+            if not values:
+                errors.append((rel, f"E-unenforced: {claim} (line {line}) declares no "
+                                    "`Enforced-by:` — name the test, script, or hook "
+                                    "that holds it, or `none: <reason>`" + (hint or "")))
+            for value in values:
+                problem = check_channel(value, kb)
+                if problem:
+                    errors.append((rel, f"{problem[0]}: {claim}: {problem[1]}"))
+            if any(v.lower().startswith("proof") for v in values) and \
+                    not any(TRUST_RE.match(l) for l in region):
+                warnings.append((rel, f"W-trust: {claim} is held by a proof but never "
+                                      "says what the proof leaves out — name the "
+                                      "statement, the boundary and the kernel "
+                                      "(`Trusted:` / `Not covered:`)"))
+    elif fm.get("type") == "constraint" and BINDING_RE.search(body) \
+            and not declared_channels(body.splitlines()):
+        warnings.append((rel, "W-unenforced: states a binding rule (MUST/NEVER) but "
+                              "names no `Enforced-by:` channel — make it mechanical "
+                              "where you can, else `none: <reason>`"))
 
 
 def main():
@@ -245,6 +492,8 @@ def main():
                     warnings.append((rel, f"W-redefine: `{term}` is defined in "
                                           f"{glossary_terms[term.lower()]} — "
                                           "link it instead of re-defining"))
+
+        check_enforcement(rel, body, fm, kb, errors, warnings)
 
         max_lines = int(fm.get("lint-max-lines", DEFAULT_MAX_LINES))
         n = text.count("\n") + 1

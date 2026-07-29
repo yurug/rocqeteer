@@ -14,18 +14,18 @@ These exist because the refinement property P5 is *tested, not proven* ([[prop-f
 #3 failure is a divergence in a corner the generators never sampled. Generators are **adversary-biased**
 toward these; each discovered divergence becomes a permanent corpus entry.
 
-| ID | Boundary | Expected behavior |
-|----|----------|-------------------|
-| T1 | Integer extremes / overflow neighborhood (when `int63` realizer is used) | reference (`Z`) and fast agree, or the bounded realizer's checked bound triggers a typed error — never silent wraparound (C4) |
-| T2 | `Get` on a missing key | both return `None` |
-| T3 | Empty state / empty input | both handle without exception; codec encodes/decodes the empty value |
-| T4 | Large state / large input (10^5+ entries/bytes) | agreement holds; no quadratic blowup surprise (perf tracked, NF) |
-| T5 | Duplicate / repeated `Put` to same key | last-write-wins matches the `put;put` law (P7) |
-| T6 | Hash collisions in the OCaml `Hashtbl` realizer | observable map contents still match the finite-map model |
-| T7 | Map iteration-order dependence | normalization removes order; a result that depends on order is a determinism bug (NF3) |
-| T8 | Unhandled effect escaping a public entrypoint | converted to `Error \`Unhandled_effect` ([[error-taxonomy]]); never an uncaught `Effect.Unhandled` |
-| T9 | Codec: truncated / overlong / malformed bytes on `decode` | typed `Error`, never a crash or partial read; `decode` total |
-| T10 | Codec: nested/compound encodings (pair-of-list-of-…) | round-trip P8 holds at depth; no length-prefix off-by-one |
+| ID | Boundary | Expected behavior | Enforced-by |
+|----|----------|------------------- |-------------|
+| T1 | Integer extremes / overflow neighborhood (when `int63` realizer is used) | reference (`Z`) and fast agree, or the bounded realizer's checked bound triggers a typed error — never silent wraparound (C4) | test:tests/diff_prims.ml |
+| T2 | `Get` on a missing key | both return `None` | test:tests/diff_kv.ml |
+| T3 | Empty state / empty input | both handle without exception; codec encodes/decodes the empty value | test:tests/diff_kv.ml |
+| T4 | Large state / large input (10^5+ entries/bytes) | agreement holds; no quadratic blowup surprise (perf tracked, NF) | test:tests/diff_store.ml |
+| T5 | Duplicate / repeated `Put` to same key | last-write-wins matches the `put;put` law (P7) | test:tests/diff_kv.ml |
+| T6 | Hash collisions in the OCaml `Hashtbl` realizer | observable map contents still match the finite-map model | test:tests/diff_store_k.ml |
+| T7 | Map iteration-order dependence | normalization removes order; a result that depends on order is a determinism bug (NF3) | test:tests/diff_fold.ml |
+| T8 | Unhandled effect escaping a public entrypoint | converted to `Error \`Unhandled_effect` ([[error-taxonomy]]); never an uncaught `Effect.Unhandled` | test:tests/diff_err.ml |
+| T9 | Codec: truncated / overlong / malformed bytes on `decode` | typed `Error`, never a crash or partial read; `decode` total | test:tests/codec_test.ml |
+| T10 | Codec: nested/compound encodings (pair-of-list-of-…) | round-trip P8 holds at depth; no length-prefix off-by-one | test:tests/codec_test.ml |
 
 ## Fault injection (report §12.1)
 Inject: missing key, bad bytes, out-of-bounds index, I/O error, unhandled effect, exception in a callback,
